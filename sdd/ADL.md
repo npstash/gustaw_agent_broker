@@ -31,3 +31,5 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261114-25 Nestor 40d86ef1d4e4 certtool and the certificate are in this repository; a new key is made directly in vault-agent_broker
 - 20261114-26 Nestor 40d86ef1d4e4 The certificate has the names broker-host, localhost, 127.0.0.1, 192.0.2.10 and broker.example.net
 - 20261115-01 Nestor 40d86ef1d4e4 The broker container uses the host network
+- 20261115-02 Nestor 73761e8f9317 The session ID does not change during the life of a session, also when the agent starts a new chat inside it
+- 20261115-03 Nestor 73761e8f9317 The reconnect interval is a value of the client library; the session client and the broker client wait it between two tries

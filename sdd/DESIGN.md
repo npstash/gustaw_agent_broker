@@ -119,7 +119,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. |
 | `GET /agents/{agent}/sessions?client={client}` | `SessionList`: the sessions of the agent that have this client ID. `client` is required. The broker reads all sessions from the agent and filters them. |
 | `GET /agents/{agent}/sessions/{id}` | `Session` with its current `state`. The broker reads it from the agent at each call. |
-| `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent closes the session stream. |
+| `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. |
 | `GET /agents/{agent}/sessions/{id}/events` | Session stream (SSE). See "Streams". |
 | `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` if a command runs. |
 | `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. `SessionResult`. |
@@ -174,6 +174,8 @@ An agent implements this API to work with the provider `agent_api`. HTTP on `127
 Rules for an agent:
 
 - The agent stores the client ID and the workspace with the session.
+- The session ID does not change during the life of a session. This applies also when the agent starts a new chat inside the session.
+- `DELETE /sessions/{id}` removes the stored chat of the session.
 - The agent detects the language of each reply. `language` is required in each `reply` event.
 - The agent sends no heartbeat. The connection to the broker is local.
 - The agent has no operation that restarts it. The broker restarts its container.
@@ -215,6 +217,7 @@ The provider `opencode` implements the operations of section 6.1 with the OpenCo
 | Session client | Sends a command. Sends an interrupt. Gives the events of the session stream. Closes. |
 
 - A session client holds one session stream. It connects again after a heartbeat timeout or a closed stream, until it is closed.
+- The session client and the broker client wait RECONNECT_INTERVAL (5 s) between two tries to connect.
 - To change the session, a program makes a new session client. It closes the old one when the old one expects no more events, or after a timeout of the program.
 - A broker client holds one broker stream, with the same reconnect rule.
 
@@ -309,6 +312,8 @@ Changes against the schema of voice client:
 | `cert.file`, `cert.names`, `cert.validity_years` | The certificate file, CERT_NAMES, CERT_VALIDITY |
 | `credentials.vault`, `credentials.secrets` | The name of the vault and the vault entry of each secret |
 
+The client library reads no key of this file. RECONNECT_INTERVAL (5 s) is a value of the client library (section 12).
+
 Default agents:
 
 | Name | Provider | URL | Container |
@@ -365,6 +370,7 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | HEARTBEAT_INTERVAL | 15 | s | `streams.heartbeat_interval_s` | Idle time before a heartbeat line |
 | HEARTBEAT_TIMEOUT | 45 | s | `streams.heartbeat_timeout_s` | Time with no data after which a client connects again |
 | REPLY_REPLAY | 600 | s | agent configuration | Maximum age of a reply that a new stream gets again |
+| RECONNECT_INTERVAL | 5 | s | — (value of the client library) | Wait of the session client and the broker client between two tries to connect |
 | LANGUAGES | `en`, `pl` | — | `language.languages` | Languages of the detection in the provider `opencode` |
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
 | CERT_NAMES | `broker-host`, `localhost`, `127.0.0.1`, `192.0.2.10`, `broker.example.net` | — | `cert.names` | Names in the certificate |
