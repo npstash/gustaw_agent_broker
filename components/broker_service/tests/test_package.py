@@ -19,8 +19,15 @@ def test_default_configuration_follows_the_design() -> None:
     assert conf.get_int("streams.heartbeat_timeout_s") == 45
     assert conf.get_list("language.languages") == ["en", "pl"]
     assert conf.get_float("language.threshold") == 0.70
-    assert conf.get_int("cert.validity_years") == 10
-    assert conf.get_list("cert.names") == ["broker-host", "localhost", "127.0.0.1", "192.0.2.10", "broker.example.net"]
+    assert conf.get_str("cert.file") == "../client/tls/server.crt"
+    assert conf.get_str_map("credentials.secrets.tls_private_key") == {
+        "entry": "Agent Broker TLS 01", "key": "private_key"}
     assert conf.get_str("agents.claude.provider") == "agent_api"
     assert conf.get_str("agents.opencode.container") == "opencode"
     assert conf.get_str("credentials.vault") == "vault-agent_broker"
+
+
+def test_certificate_values_have_one_source() -> None:
+    """CERT_NAMES and CERT_VALIDITY are only in the configuration of the component client."""
+    conf = cfg.ConfigFile(CONFIG_FILE)
+    assert conf.section("cert") == {"file": "../client/tls/server.crt"}

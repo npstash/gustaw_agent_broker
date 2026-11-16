@@ -288,14 +288,18 @@ Changes against the schema of voice client:
 | Message | Change |
 | --- | --- |
 | `SessionCreateRequest` | New: `client`, `workspace`, `force`. |
-| `Session` | New: `id`, `agent`, `client` (string or null), `workspace`, `workspace_path`, `state`, `title`, `created_at`, `last_modified`. |
+| `Session` | New: `id`, `agent`, `client` (string or null), `workspace`, `workspace_path`, `state`, `title` (string or null), `created_at`, `last_modified`. |
 | `SessionList` | New: a list of `Session`. |
-| `AgentList`, `AgentResult`, `AgentStatus` | New. `AgentStatus` replaces `ServerStatus`. |
+| `AgentList`, `AgentResult`, `AgentStatus` | New. `AgentList`: `name`, `provider`, `container_state`, `agent_state` and `version` of each agent. `AgentResult`: `agent`, `container_state`. `AgentStatus`: `uptime_s`, `version`, `open_sessions`. `AgentStatus` replaces `ServerStatus`. |
 | `StateEvent`, `StatusEvent`, `ReplyEvent`, `NoticeEvent` | New required fields `agent` and `session` in the events of a session stream. |
 | `NoticeEvent`, `LogEvent` of the broker stream | New required field `agent`. |
 | `ErrorResponse` | New error values: `workspace_not_found`, `agent_unavailable`. |
 | `RestartResult`, `ServerStatus` | Removed. |
 | `CommandRequest`, `CommandAccepted`, `Config*`, `SessionResult`, `SessionState`, `Language` | No change. |
+
+- `created_at` and `last_modified` are ISO 8601 date-time strings in UTC (`format: date-time`).
+- `container_state` is a Docker state: `running`, `exited`, `restarting`, `paused`, `created` or `dead`. It is `missing` when no container exists.
+- `agent_state` is `ok` or `unreachable`.
 
 ### 8.3 Configuration
 
@@ -309,10 +313,12 @@ Changes against the schema of voice client:
 | `agents.<name>.container` | The name of the container of the agent |
 | `streams.heartbeat_interval_s`, `streams.heartbeat_timeout_s` | HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT |
 | `language.languages`, `language.threshold` | LANGUAGES, LANGUAGE_THRESHOLD |
-| `cert.file`, `cert.names`, `cert.validity_years` | The certificate file, CERT_NAMES, CERT_VALIDITY |
+| `cert.file` | The certificate file |
 | `credentials.vault`, `credentials.secrets` | The name of the vault and the vault entry of each secret |
 
 The client library reads no key of this file. RECONNECT_INTERVAL (5 s) is a value of the client library (section 12).
+
+`config/config.yaml` of the component client is the only source of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it.
 
 Default agents:
 
@@ -373,5 +379,5 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | RECONNECT_INTERVAL | 5 | s | — (value of the client library) | Wait of the session client and the broker client between two tries to connect |
 | LANGUAGES | `en`, `pl` | — | `language.languages` | Languages of the detection in the provider `opencode` |
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
-| CERT_NAMES | `broker-host`, `localhost`, `127.0.0.1`, `192.0.2.10`, `broker.example.net` | — | `cert.names` | Names in the certificate |
-| CERT_VALIDITY | 10 | years | `cert.validity_years` | Validity of the certificate |
+| CERT_NAMES | `broker-host`, `localhost`, `127.0.0.1`, `192.0.2.10`, `broker.example.net` | — | `cert.names` (component client) | Names in the certificate |
+| CERT_VALIDITY | 10 | years | `cert.validity_years` (component client) | Validity of the certificate |

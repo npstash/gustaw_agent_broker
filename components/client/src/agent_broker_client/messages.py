@@ -5,7 +5,9 @@ A message that does not agree with its schema is an error.
 """
 from __future__ import annotations
 
+import datetime
 import json
+import re
 from functools import lru_cache
 from importlib import resources
 
@@ -43,6 +45,45 @@ def message_names() -> list[str]:
     return list(defs)
 
 
+DATE_TIME = re.compile(
+    r"\d{4}-\d{2}-\d{2}[Tt]([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([Zz]|[+-]([01]\d|2[0-3]):[0-5]\d)",
+    re.ASCII)
+
+
+def parse_date_time(value: str) -> datetime.datetime:
+    """The date and time of an RFC 3339 text. Raise ValueError for other text.
+
+    ``datetime`` has no leap second. Second 60 becomes second 59.
+    """
+    match = DATE_TIME.fullmatch(value)
+    if match is None:
+        raise ValueError(f"not an RFC 3339 date and time: {value!r}")
+    text = value.upper().replace("Z", "+00:00")
+    if match.group(2) == "60":
+        text = text[:17] + "59" + text[19:]
+    return datetime.datetime.fromisoformat(text)
+
+
+def is_date_time(value: object) -> bool:
+    """True for an RFC 3339 date and time (format ``date-time``). Other types pass.
+
+    jsonschema checks ``date-time`` only with an extra package. This function replaces it.
+    """
+    if not isinstance(value, str):
+        return True
+    try:
+        parse_date_time(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _format_checker() -> FormatChecker:
+    checker = FormatChecker()
+    checker.checks("date-time")(is_date_time)
+    return checker
+
+
 @lru_cache(maxsize=None)
 def _validator(name: str) -> Draft202012Validator:
     root = schema()
@@ -50,7 +91,7 @@ def _validator(name: str) -> Draft202012Validator:
     if not isinstance(defs, dict) or name not in defs:
         raise KeyError(f"unknown message '{name}'")
     sub: JsonObject = {"$schema": root["$schema"], "$defs": defs, "$ref": f"#/$defs/{name}"}
-    return Draft202012Validator(sub, format_checker=FormatChecker())
+    return Draft202012Validator(sub, format_checker=_format_checker())
 
 
 def validate[T](name: str, message: T) -> T:

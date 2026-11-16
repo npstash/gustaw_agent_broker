@@ -22,10 +22,9 @@ language:
   languages: [en, pl]        # LANGUAGES
   threshold: 0.70            # LANGUAGE_THRESHOLD
 
+# The names and the validity of the certificate are in ../client/config/config.yaml.
 cert:
   file: ../client/tls/server.crt
-  names: [broker-host, localhost, 127.0.0.1, 192.0.2.10, broker.example.net]   # CERT_NAMES
-  validity_years: 10                                                         # CERT_VALIDITY
 
 credentials:
   vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
