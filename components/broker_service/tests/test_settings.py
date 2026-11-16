@@ -17,8 +17,9 @@ def test_settings_of_the_default_configuration() -> None:
     assert (values.host, values.port, values.heartbeat_interval, values.queue_limit, values.docker_socket) == (
         "0.0.0.0", 38443, 15.0, 100, "/var/run/docker.sock")
     assert values.agents == (
-        AgentSettings("claude", "agent_api", "http://127.0.0.1:38444", "claude_code_server"),
-        AgentSettings("opencode", "opencode", "http://127.0.0.1:4096", "opencode"))
+        AgentSettings("claude", "agent_api", "http://127.0.0.1:38444", "claude_code_server", enabled=True),
+        AgentSettings("opencode", "opencode", "http://127.0.0.1:4096", "opencode", enabled=False))
+    assert values.log_level == "INFO"
     assert values.cert_file == (settings.PROJECT.parent / "client" / "tls" / "server.crt").resolve()
     assert values.reconnect_interval == 5.0
     assert values.docker_control_timeout < 60.0   # the broker answers before AGENT_CONTROL_TIMEOUT of the client
@@ -71,3 +72,47 @@ def test_version_line(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(version.ENV_DATE)
     monkeypatch.delenv(version.ENV_SUBJECT)
     assert version.version(settings.PROJECT).split()[0]   # from git, or "unknown" outside a clone
+
+
+def test_local_file_can_change_each_value_of_the_two_agents(tmp_path: Path) -> None:
+    local = tmp_path / "local.yaml"
+    local.write_text("agents:\n  opencode:\n    enabled: true\n    url: http://127.0.0.1:9\n    container: oc\n"
+                     "  claude:\n    enabled: false\n    provider: opencode\n", encoding="utf-8")
+    claude, opencode = settings.from_config(settings.load(local_path=local)).agents
+    assert claude == AgentSettings("claude", "opencode", "http://127.0.0.1:38444", "claude_code_server", enabled=False)
+    assert opencode == AgentSettings("opencode", "opencode", "http://127.0.0.1:9", "oc", enabled=True)
+
+
+def test_local_file_cannot_add_an_agent(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    local = tmp_path / "local.yaml"
+    local.write_text("agents:\n  third:\n    enabled: true\n    provider: agent_api\n    url: http://x\n"
+                     "    container: c\n", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="agent_broker"):
+        values = settings.from_config(settings.load(local_path=local))
+    assert [a.name for a in values.agents] == ["claude", "opencode"]
+    assert any("agents.third" in r.getMessage() for r in caplog.records)
+
+
+def test_enabled_must_be_true_or_false(tmp_path: Path) -> None:
+    local = tmp_path / "local.yaml"
+    local.write_text("agents:\n  claude:\n    enabled: maybe\n", encoding="utf-8")
+    with pytest.raises(cfg.ConfigError, match="enabled"):
+        settings.load(local_path=local)
+
+
+def test_disabled_agent_is_not_in_the_router_and_gives_no_warning(caplog: pytest.LogCaptureFixture) -> None:
+    conf = Settings(agents=(AgentSettings("claude", "agent_api", "http://127.0.0.1:1", "c1", enabled=False),
+                            AgentSettings("opencode", "opencode", "http://127.0.0.1:2", "c2", enabled=False)))
+    with caplog.at_level(logging.WARNING, logger="agent_broker"):
+        built = router.build(conf)
+    assert built.entries == [] and built.get("claude") is None
+    assert not caplog.records
+
+
+def test_log_level_is_a_configuration_value(tmp_path: Path) -> None:
+    local = tmp_path / "local.yaml"
+    local.write_text("log:\n  level: debug\n", encoding="utf-8")
+    assert settings.from_config(settings.load(local_path=local)).log_level == "DEBUG"
+    local.write_text("log:\n  level: LOUD\n", encoding="utf-8")
+    with pytest.raises(cfg.ConfigError, match="level"):
+        settings.load(local_path=local)

@@ -100,6 +100,7 @@ def main() -> int:
     try:
         conf = settings.load()
         values = settings.from_config(conf)
+        logs.setup(values.log_level)
         secrets = vault.from_config(settings.PROJECT, conf.section("credentials")).open(settings.START_SECRETS)
         context = tls.server_context(values.cert_file, secrets.get("tls_private_key"), settings.TLS_SCRATCH)
         broker = Broker(values, secrets, context)

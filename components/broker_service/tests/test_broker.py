@@ -111,13 +111,40 @@ def test_restart_gives_lifecycle_events_on_the_broker_stream(in_tmp: Path) -> No
             while "container restarted" not in broker_notices(seen):
                 seen.append(await events.next())
             assert broker_notices(seen) == [
-                "container died, exit code 0", "container stopped", "container started", "container restarted"]
+                "container ended, exit code 0", "container started", "container restarted"]
             assert all(isinstance(e, abc_.NoticeEvent) and e.agent == "claude" and e.session is None
                        and e.kind is abc_.NoticeKind.LIFECYCLE for e in seen)
     run(test, in_tmp)
 
 
-def test_died_container_gives_a_lifecycle_event(in_tmp: Path) -> None:
+def test_stop_gives_one_lifecycle_event_for_the_end(in_tmp: Path) -> None:
+    """Docker sends "die" and "stop" for a stop. The broker reports one event for the end (X1)."""
+    async def test(rig: Rig) -> None:
+        async with rig.client() as bc:
+            events = BrokerEvents(bc)
+            await until(lambda: rig.broker.proxy.hub.count == 1)
+            await bc.stop_agent("claude")
+            await bc.start_agent("claude")
+            seen = [await events.next() for _ in range(2)]
+            assert broker_notices(seen) == ["container ended, exit code 0", "container started"]
+            with pytest.raises(asyncio.TimeoutError):
+                await events.next(timeout=0.3)
+    run(test, in_tmp)
+
+
+def test_disabled_agent_is_not_served(in_tmp: Path) -> None:
+    async def test(rig: Rig) -> None:
+        async with rig.client() as bc:
+            assert [a.name for a in await bc.list_agents()] == ["claude"]
+        for method, path in (("GET", "/agents/opencode/config"), ("POST", "/agents/opencode/start"),
+                             ("GET", "/agents/opencode/sessions?client=c"), ("POST", "/agents/opencode/sessions")):
+            status, _ = await rig.raw(method, path)
+            assert status == 404, (method, path)
+        assert rig.docker.actions == []   # the container of a disabled agent is not touched
+    run(test, in_tmp)
+
+
+def test_ended_container_gives_a_lifecycle_event(in_tmp: Path) -> None:
     async def test(rig: Rig) -> None:
         async with rig.client() as bc:
             events = BrokerEvents(bc)
@@ -126,7 +153,7 @@ def test_died_container_gives_a_lifecycle_event(in_tmp: Path) -> None:
             rig.docker.emit("other_container", "die", "1")   # not a container of an agent
             item = await events.next()
             assert isinstance(item, abc_.NoticeEvent)
-            assert (item.agent, item.text) == ("claude", "container died, exit code 137")
+            assert (item.agent, item.text) == ("claude", "container ended, exit code 137")
     run(test, in_tmp)
 
 

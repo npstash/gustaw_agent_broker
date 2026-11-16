@@ -4,17 +4,24 @@ server:
   host: 0.0.0.0              # BROKER_HOST
   port: 38443                # BROKER_PORT
 
+# The two supported agents, with all their settings. A local file can change each value, also `enabled`.
+# A local file cannot add an agent. The service does not serve an agent with `enabled: false`.
 # The provider of each agent: agent_api or opencode. The provider opencode is not implemented yet;
-# the service skips such an agent with a WARNING. A local file cannot add an agent.
+# the service skips an enabled agent with this provider and writes a WARNING.
 agents:
   claude:
+    enabled: true
     provider: agent_api
     url: http://127.0.0.1:38444
     container: claude_code_server
   opencode:
+    enabled: false           # its provider does not exist yet
     provider: opencode
     url: http://127.0.0.1:4096
     container: opencode
+
+log:
+  level: INFO                # LOG_LEVEL: ERROR, WARNING, INFO or DEBUG
 
 streams:
   heartbeat_interval_s: 15   # HEARTBEAT_INTERVAL

@@ -2,7 +2,7 @@
 
 This project uses the service variant of the SDD process. Section 6 defines the required behaviour of the service.
 
-Not implemented: this document is the design before the implementation. [ADR-20261115-service_split](the voice client repository/blob/main/sdd/adr/ADR-20261115-service_split.md) of voice client proposes the change that uses this service.
+The work list is in [TODO.md](TODO.md). [ADR-20261115-service_split](the voice client repository/blob/main/sdd/adr/ADR-20261115-service_split.md) of voice client proposes the change that uses this service.
 
 ## 1. Overview
 
@@ -145,8 +145,9 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | Stream | Events | Fields in each event |
 | --- | --- | --- |
 | Session stream | `state`, `status`, `reply`, `notice` with the kinds `command_failed`, `command_dropped` and `lifecycle` (of the session) | `agent`, `session` |
-| Broker stream | `notice` with the kind `lifecycle` (container started, stopped, restarted, crashed; agent reachable, not reachable), `log` (log lines of an agent) | `agent` |
+| Broker stream | `notice` with the kind `lifecycle` (container started, restarted, ended; agent reachable, not reachable), `log` (log lines of an agent) | `agent` |
 
+- A container gives one lifecycle event for each end, with the exit code in the text. Docker sends the same event for a stop and for a crash. The broker does not remember which stops it started itself, so it does not tell the two apart.
 - The first event of a session stream is the current `state` of the session.
 - Then the agent sends the last reply again, if it is not older than REPLY_REPLAY (600 s) and no stream got it.
 - After that, a stream carries only live events.
@@ -232,7 +233,7 @@ The provider `opencode` implements the operations of section 6.1 with the OpenCo
 | --- | --- |
 | `run.sh cert` | Makes a new key pair with the names of CERT_NAMES. Writes the certificate to `tls/server.crt` and the key to the vault. |
 | `run.sh test` | Installs the test dependencies in a venv and runs the tests. |
-| `update.sh` | Host: pulls the repository, builds the image and runs `docker compose up -d`. |
+| `update.sh [--dry-run]` | Host: pulls the current branch, builds the image and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. |
 
 ## 7. Key flows
 
@@ -315,6 +316,8 @@ Changes against the schema of voice client:
 | Key | Content |
 | --- | --- |
 | `server.host`, `server.port` | BROKER_HOST, BROKER_PORT |
+| `log.level` | LOG_LEVEL |
+| `agents.<name>.enabled` | `true` or `false`. The broker serves only an enabled agent. |
 | `agents.<name>.provider` | `agent_api` or `opencode` |
 | `agents.<name>.url` | The local URL of the agent |
 | `agents.<name>.container` | The name of the container of the agent |
@@ -329,12 +332,17 @@ The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CO
 
 `config/config.yaml` of the component client is the only source of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it.
 
+The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`.local_assets/config/local.yaml`) can change each value of these agents, also `enabled`. It cannot add another agent.
+
+- A disabled agent is not served. It is not in `GET /agents`, and each call for it gives `404`. The broker does not touch its container.
+- An enabled agent whose provider is not implemented is skipped with a WARNING.
+
 Default agents:
 
-| Name | Provider | URL | Container |
-| --- | --- | --- | --- |
-| `claude` | `agent_api` | `http://127.0.0.1:38444` | `claude_code_server` |
-| `opencode` | `opencode` | `http://127.0.0.1:4096` | `opencode` |
+| Name | Enabled | Provider | URL | Container |
+| --- | --- | --- | --- | --- |
+| `claude` | yes | `agent_api` | `http://127.0.0.1:38444` | `claude_code_server` |
+| `opencode` | no (its provider does not exist yet) | `opencode` | `http://127.0.0.1:4096` | `opencode` |
 
 ### 8.4 Vault entries
 
@@ -352,9 +360,18 @@ The vault is the repository `vault-agent_broker`.
 ## 9. Deployment
 
 - The broker runs as one Docker container on broker-host, with the host network.
-- The image holds the code. `update.sh` on the host pulls, builds and starts the container. A restart of the container does not update the code.
-- `compose.yaml` of this project defines the container, with the restart policy `unless-stopped`.
-- Mounts: the Docker socket, and the folder of the vault.
+- The image is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) and the vault tool of maya-agent-kit (`tools/auth`). It holds no secret and no vault.
+- The image has the layout of a workspace (`/workspace/projects/gustaw/gustaw_agent_broker`, `/workspace/maya`, `/workspace/vaults/vault-agent_broker`), so the paths of `dependencies.txt` stay valid.
+- The container runs as UID 1000, not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`).
+- The project has its own clone on the host, with the dependencies next to it or inside it. `update.sh` works on the repository that it is in:
+  1. It checks that HEAD is on a branch and that the clone has no local changes. It pulls the current branch with `git pull --ff-only`. It does not switch the branch, so the clone can stay on a release branch.
+  2. It checks that each dependency of `dependencies.txt` is available, with the lookup of the rule submodule-dependencies. It does not pull or change the dependencies.
+  3. It builds the image from the committed code (`git archive` of the project and of `tools/auth` of maya-agent-kit), with the commit ID, date and subject as build arguments.
+  4. It runs `docker compose up -d`: the container is made again from the new image.
+- A restart of the container does not update the code.
+- `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`.
+- Mounts: the Docker socket; the folder of the vault, read-write (the vault tool writes its access log); the folder `components/broker_service/.local_assets/config`, read-only, for the optional `local.yaml`. `update.sh` finds the folder of the vault and gives it to Compose in `AGENT_BROKER_VAULT`. The path is not fixed in `compose.yaml`.
+- The clone key of the host clone must open the vault without a terminal (section 11).
 - The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. It is committed in `tls/server.crt`. Each client reads it from the submodule.
 
 | Dependency | Container | Use |
@@ -374,6 +391,8 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on broker-host is its workspace folder.
 - The session log route of OpenCode is marked experimental.
+- Not verified: the build of the image and the start of the container (section 9). `compose.yaml` is not checked with `docker compose config`.
+- Not verified: a clone key of the vault that is encrypted with a passphrase in the OS keyring does not open in the container. The key of the host clone must be plain, or open in another way.
 
 ## 12. Default values
 
@@ -381,6 +400,7 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | --- | --- | --- | --- | --- |
 | BROKER_HOST | `0.0.0.0` | — | `server.host` | Address that the broker listens on |
 | BROKER_PORT | 38443 | — | `server.port` | Port of the broker |
+| LOG_LEVEL | `INFO` | — | `log.level` | Lowest level of the log lines of the broker: `ERROR`, `WARNING`, `INFO` or `DEBUG` |
 | HEARTBEAT_INTERVAL | 15 | s | `streams.heartbeat_interval_s` | Idle time before a heartbeat line |
 | HEARTBEAT_TIMEOUT | 45 | s | `streams.heartbeat_timeout_s` | Time with no data after which a client connects again |
 | REPLY_REPLAY | 600 | s | agent configuration | Maximum age of a reply that a new stream gets again |

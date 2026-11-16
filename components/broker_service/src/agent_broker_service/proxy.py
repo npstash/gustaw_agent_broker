@@ -27,7 +27,7 @@ log = logs.get("proxy")
 
 AGENT_REACHABLE = "agent reachable"
 AGENT_UNREACHABLE = "agent not reachable"
-CONTAINER_TEXTS = {"start": "container started", "stop": "container stopped", "restart": "container restarted"}
+CONTAINER_TEXTS = {"start": "container started", "restart": "container restarted"}
 SSE_HEADERS = {"Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
@@ -49,7 +49,7 @@ def lifecycle(agent: str, text: str) -> JsonObject:
 
 def container_text(event: ContainerEvent) -> str:
     if event.action == "die":
-        return f"container died, exit code {event.exit_code if event.exit_code is not None else 'unknown'}"
+        return f"container ended, exit code {event.exit_code if event.exit_code is not None else 'unknown'}"
     return CONTAINER_TEXTS[event.action]
 
 

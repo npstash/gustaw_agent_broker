@@ -49,11 +49,15 @@ class Router:
 def build(settings: Settings, factories: Mapping[Provider, ProviderFactory] = FACTORIES) -> Router:
     """Make the router of the configured agents.
 
+    A disabled agent is not served: it is not in the router, so a call for it gives 404.
     An unknown provider name is a start error (ConfigError). An agent with a known provider
     that is not implemented is skipped with a WARNING, so that the other agents stay usable.
     """
     entries: list[AgentEntry] = []
     for agent in settings.agents:
+        if not agent.enabled:
+            log.info("The agent %s is disabled.", agent.name)
+            continue
         try:
             provider = Provider(agent.provider)
         except ValueError:

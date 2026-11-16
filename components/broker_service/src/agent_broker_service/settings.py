@@ -1,7 +1,8 @@
 """The configuration of the broker service (DESIGN.md, sections 8.3 and 12).
 
 ``config/config.yaml`` holds the default values. The optional local file
-``.local_assets/config/local.yaml`` replaces values of the same keys. A local file cannot add a key.
+``.local_assets/config/local.yaml`` replaces values of the same keys. A local file cannot add a key,
+so it cannot add an agent.
 """
 from __future__ import annotations
 
@@ -45,6 +46,8 @@ def _agents(value: JsonValue) -> None:
     for name, agent in value.items():
         if not isinstance(agent, dict):
             raise cfg.ConfigError(f"the agent {name} must be a mapping")
+        if not isinstance(agent.get("enabled"), bool):
+            raise cfg.ConfigError(f"the agent {name} needs enabled: true or false")
         for key in ("provider", "url", "container"):
             if not isinstance(agent.get(key), str) or not agent.get(key):
                 raise cfg.ConfigError(f"the agent {name} needs the text {key}")
@@ -57,6 +60,7 @@ VALIDATORS: dict[str, cfg.Validator] = {
     "server.host": _text,
     "server.port": cfg.number_range(0, 65535),
     "agents": _agents,
+    "log.level": cfg.log_level,
     "streams.heartbeat_interval_s": cfg.number_range(0.001),
     "streams.heartbeat_timeout_s": cfg.number_range(0.001),
     "streams.queue_limit": cfg.number_range(1),
@@ -75,6 +79,7 @@ class AgentSettings:
     provider: str
     url: str
     container: str
+    enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,7 @@ class Settings:
     heartbeat_interval: float = 15.0
     queue_limit: int = 100
     docker_socket: str = "/var/run/docker.sock"
+    log_level: str = "INFO"
     cert_file: Path = field(default_factory=lambda: resolve_path(PROJECT, "../client/tls/server.crt"))
     reconnect_interval: float = RECONNECT_INTERVAL_S
     agent_request_timeout: float = AGENT_REQUEST_TIMEOUT_S
@@ -101,9 +107,10 @@ def load(path: Path = CONFIG_FILE, local_path: Path | None = LOCAL_CONFIG) -> cf
 def from_config(conf: cfg.ConfigFile) -> Settings:
     """The settings of a checked configuration."""
     agents: list[AgentSettings] = []
-    for name, value in conf.section("agents").items():
-        agent = cfg.as_str_map(f"agents.{name}", value)
-        agents.append(AgentSettings(name, agent["provider"], agent["url"], agent["container"]))
+    for name in conf.section("agents"):
+        prefix = f"agents.{name}."
+        agents.append(AgentSettings(name, conf.get_str(prefix + "provider"), conf.get_str(prefix + "url"),
+                                    conf.get_str(prefix + "container"), enabled=conf.get_bool(prefix + "enabled")))
     return Settings(
         agents=tuple(agents),
         host=conf.get_str("server.host"),
@@ -111,5 +118,6 @@ def from_config(conf: cfg.ConfigFile) -> Settings:
         heartbeat_interval=conf.get_float("streams.heartbeat_interval_s"),
         queue_limit=conf.get_int("streams.queue_limit"),
         docker_socket=conf.get_str("docker.socket"),
+        log_level=conf.get_str("log.level").upper(),
         cert_file=resolve_path(PROJECT, conf.get_str("cert.file")),
     )

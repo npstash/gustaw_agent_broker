@@ -2,7 +2,7 @@
 
 One API for several coding agents. A client selects an agent and a session in each call.
 
-Status: not implemented. The skeleton, the message schema and `certtool` exist ([sdd/TODO.md](sdd/TODO.md)).
+Status: the broker with the agent API is implemented. It is not tested on the target machine yet. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
 
 ## SDD
 
@@ -25,5 +25,29 @@ A client project installs only `components/client` with pip.
 
 - Each component has `run.sh`. See the README of the component.
 - CI: [.github/workflows/tests.yml](.github/workflows/tests.yml) runs `run.sh test` in each component.
+
+## Deployment
+
+The broker runs as one Docker container on the host. For the design, see [sdd/DESIGN.md](sdd/DESIGN.md), section 9.
+
+Layout of the clones on the host. Put the dependencies next to the project, or inside it. The paths are in [dependencies.txt](dependencies.txt).
+
+```
+<folder>/agent_broker/            this project (its own clone)
+<folder>/maya-agent-kit/          or <folder>/maya
+<folder>/vault-agent_broker/
+```
+
+First start:
+
+1. Clone the three repositories as shown.
+2. Enrol the clone of the vault. Use the vault tool of maya-agent-kit: [tools/auth/README.md](../../../maya/tools/auth/README.md), section "Enrolment". The key of the clone must open the vault without a terminal.
+3. Run `./update.sh`.
+
+Update: run `./update.sh`. The script pulls the current branch of the clone. It does not switch the branch. It stops on a detached HEAD, on local changes, and when a dependency is missing. It builds the image from the committed code and runs `docker compose up -d`. `./update.sh --dry-run` prints the steps and changes nothing.
+
+Local configuration: write `components/broker_service/.local_assets/config/local.yaml`. Restart the container to apply it.
+
+Not verified: the image build and the start of the container ([sdd/DESIGN.md](sdd/DESIGN.md), section 11).
 
 Agent Broker is a submodule of the repository `the workspace`. It needs the repositories `maya-agent-kit` and `vault-agent_broker`. [dependencies.txt](dependencies.txt) gives their layouts.

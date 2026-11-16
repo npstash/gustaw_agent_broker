@@ -82,6 +82,7 @@ class FakeDocker:
         if action == "stop" and before != "running":
             return web.Response(status=304)
         if action in ("stop", "restart") and before == "running":
+            # Docker sends "die" for each end. It also sends "kill" and "stop", which the broker does not use.
             self.emit(name, "die", "0")
             self.emit(name, "stop")
         self.containers[name] = "exited" if action == "stop" else "running"

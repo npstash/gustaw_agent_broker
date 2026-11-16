@@ -2,7 +2,7 @@
 
 The broker service: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.1, 6.1, 6.2 and 8.
 
-The provider `opencode` (section 6.3) is not implemented yet. The service skips an agent with this provider and writes a WARNING.
+The provider `opencode` (section 6.3) is not implemented yet. The service skips an enabled agent with this provider and writes a WARNING. The default configuration disables the agent `opencode`.
 
 ## Contents
 
@@ -19,6 +19,7 @@ The provider `opencode` (section 6.3) is not implemented yet. The service skips 
 | `src/agent_broker_service/settings.py` | The configuration values and their checks. |
 | `src/agent_broker_service/tls.py`, `logs.py`, `version.py`, `errors.py` | The TLS context, the log lines, the version line, the errors. |
 | `config/config.yaml` | The default configuration ([DESIGN.md](../../sdd/DESIGN.md), sections 8.3 and 12). No secrets. |
+| `Dockerfile` | The image of the service. `update.sh` and `compose.yaml` in the project folder build and run it. |
 | `requirements.txt` | The pinned dependencies. It installs [../client](../client/README.md) as a path dependency. |
 
 ## Run
@@ -32,7 +33,9 @@ The provider `opencode` (section 6.3) is not implemented yet. The service skips 
 ## Configure
 
 - Change a value in `.local_assets/config/local.yaml`. A local value replaces the default value of the same key.
-- A local file cannot add a key, e.g. a new agent. Add an agent in `config/config.yaml`.
+- A local file cannot add a key. It cannot add an agent. It can change each value of the agents `claude` and `opencode`.
+- Each agent has `enabled`. The default is `true` for `claude` and `false` for `opencode`. The service serves only an enabled agent. A call for a disabled agent gives `404`.
+- `log.level` is the log level: `ERROR`, `WARNING`, `INFO` (default) or `DEBUG`.
 - An unknown provider name or a value that is not correct stops the start with an error.
 - `docker.socket` is the path of the Docker socket. The account of the service must have access to it.
 

@@ -25,7 +25,9 @@ log = logs.get("docker")
 # The host name in the URL. A Unix socket ignores it.
 BASE_URL = "http://docker"
 # The Docker events that the broker passes as lifecycle events (DESIGN.md, section 6.1, "Streams").
-LIFECYCLE_ACTIONS = ("start", "stop", "restart", "die")
+# Docker sends "die" for each end of a container, for a stop and for a crash. The event "stop" is not used:
+# the broker gives one event for each end and does not remember which stops it started itself.
+LIFECYCLE_ACTIONS = ("start", "restart", "die")
 
 # The Docker states that are not in ContainerState. Choice of the service: the DESIGN does not map them.
 # "removing": the container does not run and goes away soon.

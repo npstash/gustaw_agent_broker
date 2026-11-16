@@ -55,7 +55,9 @@ def fake_secrets(tls: TlsFiles) -> FakeSecrets:
 def settings_for(agent: FakeAgent, tls: TlsFiles, *, heartbeat_interval: float = NO_TIMEOUT,
                  queue_limit: int = 100) -> Settings:
     return Settings(
-        agents=(AgentSettings("claude", "agent_api", agent.url, CONTAINER),),
+        # The agent opencode is disabled, like in the default configuration: the broker does not serve it.
+        agents=(AgentSettings("claude", "agent_api", agent.url, CONTAINER),
+                AgentSettings("opencode", "opencode", "http://127.0.0.1:1", "opencode", enabled=False)),
         host="127.0.0.1", port=0, heartbeat_interval=heartbeat_interval, queue_limit=queue_limit,
         docker_socket="docker.sock", cert_file=tls.cert, reconnect_interval=RECONNECT, agent_request_timeout=2.0,
         docker_inspect_timeout=2.0, docker_control_timeout=2.0)
