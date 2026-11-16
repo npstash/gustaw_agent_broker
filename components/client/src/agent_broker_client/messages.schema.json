@@ -1,0 +1,514 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent_broker/messages",
+  "$defs": {
+    "SessionState": {
+      "enum": [
+        "idle",
+        "working",
+        "stopped"
+      ]
+    },
+    "Language": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$",
+      "description": "ISO 639-1 code, for example en or pl"
+    },
+    "CommandRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Made by the client. A repeated ID runs nothing."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "voice",
+            "text"
+          ],
+          "default": "text"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "CommandAccepted": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "ConfigSetRequest": {
+      "type": "object",
+      "properties": {
+        "value": {}
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ConfigValue": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Dotted path, for example claude.permission_mode"
+        },
+        "value": {}
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ConfigValues": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConfigValue"
+          }
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "ConfigSetResult": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {},
+        "applied": {
+          "enum": [
+            "now",
+            "at_restart"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "applied"
+      ],
+      "additionalProperties": false
+    },
+    "AgentList": {
+      "type": "object",
+      "properties": {
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "provider": {
+                "enum": [
+                  "agent_api",
+                  "opencode"
+                ]
+              },
+              "container_state": {
+                "type": "string"
+              },
+              "agent_state": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "provider",
+              "container_state",
+              "agent_state",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "agents"
+      ],
+      "additionalProperties": false
+    },
+    "AgentResult": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "container_state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent",
+        "container_state"
+      ],
+      "additionalProperties": false
+    },
+    "AgentStatus": {
+      "type": "object",
+      "properties": {
+        "uptime_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "string"
+        },
+        "open_sessions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "uptime_s",
+        "version",
+        "open_sessions"
+      ],
+      "additionalProperties": false
+    },
+    "SessionCreateRequest": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Client ID"
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path relative to the workspace root of the agent"
+        },
+        "force": {
+          "type": "boolean",
+          "default": false,
+          "description": "Create a workspace folder that does not exist"
+        }
+      },
+      "required": [
+        "client",
+        "workspace"
+      ],
+      "additionalProperties": false
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "client": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Client ID. Null for a session that another tool made."
+        },
+        "workspace": {
+          "type": "string",
+          "description": "Relative form, for example x"
+        },
+        "workspace_path": {
+          "type": "string",
+          "description": "The path that the agent uses"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionState"
+        },
+        "title": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "last_modified": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "client",
+        "workspace",
+        "workspace_path",
+        "state",
+        "title",
+        "created_at",
+        "last_modified"
+      ],
+      "additionalProperties": false
+    },
+    "SessionList": {
+      "type": "object",
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Session"
+          }
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "additionalProperties": false
+    },
+    "SessionResult": {
+      "type": "object",
+      "properties": {
+        "session_state": {
+          "$ref": "#/$defs/SessionState"
+        }
+      },
+      "required": [
+        "session_state"
+      ],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "enum": [
+            "bad_request",
+            "unauthorized",
+            "not_found",
+            "busy",
+            "workspace_not_found",
+            "agent_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "StateEvent": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the agent"
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session ID"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionState"
+        }
+      },
+      "required": [
+        "agent",
+        "session",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "StatusEvent": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the agent"
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session ID"
+        },
+        "kind": {
+          "enum": [
+            "activity"
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent",
+        "session",
+        "kind",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "ReplyEvent": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the agent"
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session ID"
+        },
+        "command_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "message": {
+          "type": "string"
+        },
+        "language": {
+          "$ref": "#/$defs/Language"
+        }
+      },
+      "required": [
+        "agent",
+        "session",
+        "command_id",
+        "message",
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "NoticeEvent": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the agent"
+        },
+        "session": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session ID. Absent in an event of the broker stream."
+        },
+        "kind": {
+          "enum": [
+            "lifecycle",
+            "command_failed",
+            "command_dropped"
+          ]
+        },
+        "command_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent",
+        "kind",
+        "command_id",
+        "text"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "command_failed",
+              "command_dropped"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "session"
+        ]
+      }
+    },
+    "LogEvent": {
+      "type": "object",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the agent"
+        },
+        "component": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "ERROR",
+            "WARNING",
+            "INFO",
+            "DEBUG"
+          ]
+        },
+        "time": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent",
+        "component",
+        "level",
+        "time",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

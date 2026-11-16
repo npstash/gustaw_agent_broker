@@ -1,0 +1,2 @@
+# The pins are in pyproject.toml.
+-e .

@@ -1,0 +1,13 @@
+# Folders of the shareable submodules that agent_broker uses (rule submodule-dependencies of maya-agent-kit).
+# The layouts: agent_broker in projects/gustaw/ of a workspace, a clone next to agent_broker, a clone in agent_broker.
+[maya-agent-kit]
+../../../maya
+../maya
+../maya-agent-kit
+./maya
+./maya-agent-kit
+
+[vault-agent_broker]
+../../../vaults/vault-agent_broker
+../vault-agent_broker
+./vault-agent_broker

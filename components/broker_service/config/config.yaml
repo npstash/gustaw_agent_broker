@@ -1,0 +1,36 @@
+# Default configuration of the broker service (DESIGN.md, sections 8.3 and 12).
+# It holds no secrets. Relative paths start at the folder of the component broker_service.
+server:
+  host: 0.0.0.0              # BROKER_HOST
+  port: 38443                # BROKER_PORT
+
+agents:
+  claude:
+    provider: agent_api
+    url: http://127.0.0.1:38444
+    container: claude_code_server
+  opencode:
+    provider: opencode
+    url: http://127.0.0.1:4096
+    container: opencode
+
+streams:
+  heartbeat_interval_s: 15   # HEARTBEAT_INTERVAL
+  heartbeat_timeout_s: 45    # HEARTBEAT_TIMEOUT
+
+language:
+  languages: [en, pl]        # LANGUAGES
+  threshold: 0.70            # LANGUAGE_THRESHOLD
+
+cert:
+  file: ../client/tls/server.crt
+  names: [broker-host, localhost, 127.0.0.1, 192.0.2.10, broker.example.net]   # CERT_NAMES
+  validity_years: 10                                                         # CERT_VALIDITY
+
+credentials:
+  vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
+  secrets:
+    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key}
+    api_username: {entry: "Agent Broker API 01", key: username}
+    api_password: {entry: "Agent Broker API 01", key: password}
+    opencode_password: {entry: "OpenCode API token", key: password}

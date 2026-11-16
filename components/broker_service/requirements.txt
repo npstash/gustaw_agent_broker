@@ -1,0 +1,4 @@
+# Pinned runtime dependencies. The pins of the component client are in ../client/pyproject.toml.
+-e ../client
+-e .
+lingua-language-detector==2.2.0

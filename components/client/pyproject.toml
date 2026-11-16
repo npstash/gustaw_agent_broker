@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-broker-client"
+version = "0.1.0"
+description = "The client library, the message schema and the certificate tool of the Agent Broker."
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp==3.14.3",
+    "ruamel.yaml==0.19.1",
+    "cryptography==50.0.2",
+    "keyring==25.7.0",
+    "jsonschema==4.26.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_broker_client = ["*.json"]

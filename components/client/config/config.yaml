@@ -1,0 +1,10 @@
+# Configuration of certtool: a new key pair for the broker (DESIGN.md, sections 6.5, 8.3 and 8.4).
+# Relative paths start at the folder of the component client.
+cert:
+  file: tls/server.crt
+  names: [broker-host, localhost, 127.0.0.1, 192.0.2.10, broker.example.net]   # CERT_NAMES: DNS names and IP addresses
+  validity_years: 10                                                         # CERT_VALIDITY
+credentials:
+  vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
+  secrets:
+    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key}

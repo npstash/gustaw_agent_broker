@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-broker-service"
+version = "0.1.0"
+description = "The Agent Broker service."
+requires-python = ">=3.12"
+# The pins are in requirements.txt.
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,12 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python bytecode and build metadata
+*.egg-info/
+
+# Generated and intermediate files (rule deliverables-only)
+.local_assets/
+
+# Atomic-write leftovers
+*.tmp
