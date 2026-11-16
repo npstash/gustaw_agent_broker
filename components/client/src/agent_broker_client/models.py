@@ -324,6 +324,8 @@ def decode_json(text: str) -> JsonValue:
         value: JsonValue = json.loads(text)
     except json.JSONDecodeError as exc:
         raise MessageError(f"the data is not JSON: {exc}") from None
+    except RecursionError:
+        raise MessageError("the data is not JSON: too many levels") from None
     return value
 
 

@@ -28,6 +28,7 @@ HEARTBEAT_TIMEOUT_S = 45.0     # HEARTBEAT_TIMEOUT (DESIGN.md, section 12)
 RECONNECT_INTERVAL_S = 5.0     # RECONNECT_INTERVAL
 # The DESIGN gives no limit for a request. Choice of the library: 15 s.
 REQUEST_TIMEOUT_S = 15.0
+AGENT_CONTROL_TIMEOUT_S = 60.0   # AGENT_CONTROL_TIMEOUT: start, stop and restart of an agent
 
 
 def _part(value: str) -> str:
@@ -49,6 +50,7 @@ class HttpBrokerClient(BrokerClient):
                  heartbeat_timeout: float = HEARTBEAT_TIMEOUT_S,
                  reconnect_interval: float = RECONNECT_INTERVAL_S,
                  request_timeout: float = REQUEST_TIMEOUT_S,
+                 agent_control_timeout: float = AGENT_CONTROL_TIMEOUT_S,
                  on_connection: ConnectionListener | None = None):
         if not client_id:
             raise ValueError("the client ID must not be empty")
@@ -59,6 +61,7 @@ class HttpBrokerClient(BrokerClient):
         self.heartbeat_timeout = heartbeat_timeout
         self.reconnect_interval = reconnect_interval
         self.request_timeout = request_timeout
+        self.agent_control_timeout = agent_control_timeout
         self._http_session: aiohttp.ClientSession | None = None
         self._closed = False
         self._sessions: set[HttpSessionClient] = set()
@@ -86,9 +89,13 @@ class HttpBrokerClient(BrokerClient):
         self._sessions.discard(session)
 
     async def call[R](self, method: str, path: str, parse: Callable[[JsonValue], R], body: JsonObject | None = None,
-                      params: Mapping[str, str] | None = None) -> R:
-        """Send one request. Return the typed answer. Raise a BrokerError for an error answer."""
-        timeout = aiohttp.ClientTimeout(total=self.request_timeout)
+                      params: Mapping[str, str] | None = None, timeout_s: float | None = None) -> R:
+        """Send one request. Return the typed answer. Raise a BrokerError for an error answer.
+
+        ``timeout_s`` replaces the request timeout for this request.
+        """
+        limit = timeout_s if timeout_s is not None else self.request_timeout
+        timeout = aiohttp.ClientTimeout(total=limit)
         data = json.dumps(body, ensure_ascii=False) if body is not None else None
         headers = {"Content-Type": "application/json"} if body is not None else None
         try:
@@ -97,7 +104,7 @@ class HttpBrokerClient(BrokerClient):
                 status = response.status
                 text = await response.text()
         except TimeoutError:
-            raise BrokerUnreachableError(f"{method} {path}: no answer in {self.request_timeout} s") from None
+            raise BrokerUnreachableError(f"{method} {path}: no answer in {limit} s") from None
         except aiohttp.ClientSSLError as exc:
             raise BrokerTlsError(f"{method} {path}: TLS failed: {exc}") from exc
         except (aiohttp.ClientError, OSError) as exc:
@@ -136,7 +143,8 @@ class HttpBrokerClient(BrokerClient):
         return await self.call("GET", "/agents", models.parse_agent_list)
 
     async def _control(self, agent: str, action: str) -> AgentResult:
-        return await self.call("POST", f"/agents/{_part(agent)}/{action}", models.parse_agent_result)
+        return await self.call("POST", f"/agents/{_part(agent)}/{action}", models.parse_agent_result,
+                               timeout_s=self.agent_control_timeout)
 
     async def start_agent(self, agent: str) -> AgentResult:
         return await self._control(agent, "start")

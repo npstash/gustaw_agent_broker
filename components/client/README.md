@@ -9,7 +9,7 @@ A client project installs this component with pip. The package is `agent_broker_
 | Item | Use |
 | --- | --- |
 | `src/agent_broker_client/messages.schema.json` | The contract of all messages (JSON Schema, draft 2020-12). Package data. |
-| `src/agent_broker_client/messages.py` | Check a message or an event against the schema. |
+| `src/agent_broker_client/messages.py` | Check a message or an event against the schema: `validate_event` for the broker API, `validate_agent_event` for the agent API. |
 | `src/agent_broker_client/api.py` | The interface: `BrokerClient` and `SessionClient`. |
 | `src/agent_broker_client/client.py` | The implementation: `HttpBrokerClient` and `HttpSessionClient`. |
 | `src/agent_broker_client/models.py` | The typed messages and events, and the enums of the schema. |
@@ -48,13 +48,15 @@ async def main(username: str, password: str) -> None:
 ```
 
 - `HttpBrokerClient(url, username, password, client_id)` makes the broker client. One process can hold several.
-- Optional parameters: `cert_file` (default `tls/server.crt`), `heartbeat_timeout` (45 s), `reconnect_interval` (5 s), `request_timeout` (15 s), `on_connection`.
+- Optional parameters: `cert_file` (default `tls/server.crt`), `heartbeat_timeout` (45 s), `reconnect_interval` (5 s), `request_timeout` (15 s), `agent_control_timeout` (AGENT_CONTROL_TIMEOUT, 60 s), `on_connection`.
+- Start, stop and restart of an agent wait `agent_control_timeout`. Each other request waits `request_timeout`.
 - The session client connects its stream when you make it. After each connect, the first event is `state`.
 - After a heartbeat timeout or a closed stream, the client connects again. `connection_state` and `on_connection` give the state of the connection.
 - A `404` for a session stream ends `events()` with `SessionGoneError`. The client does not connect again.
 - A `401` or a TLS verification failure ends `events()` of each stream with `UnauthorizedError` or `BrokerTlsError`. The connection state is `failed`. The client does not connect again.
 - The client tries again after a `503` and when the broker is not reachable.
-- Each stream holds a maximum of 1000 events that the program did not read. Then the client stops reading the connection until the program reads. It drops no event.
+- Each stream holds STREAM_QUEUE_LIMIT (100) events that the program did not read. At this limit, the client drops the connection. It keeps the waiting events. `last_error` is `StreamQueueFullError`.
+- After that, the client connects again by the reconnect rule, but only after the program has read the waiting events. The first event of the new connection is `state`.
 - An event that breaks the schema comes as `InvalidEvent`. The stream continues.
 - An error answer raises a subclass of `BrokerError`, e.g. `BusyError` or `WorkspaceNotFoundError`.
 - The broker stream connects at the first call of `broker.events()`.

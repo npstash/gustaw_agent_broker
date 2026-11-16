@@ -16,6 +16,7 @@ from jsonschema.exceptions import ValidationError
 
 from .jsontypes import JsonObject
 
+# The events of the broker API (to a client). The field ``agent`` is required.
 EVENT_SCHEMAS = {
     "state": "StateEvent",
     "status": "StatusEvent",
@@ -23,10 +24,20 @@ EVENT_SCHEMAS = {
     "notice": "NoticeEvent",
     "log": "LogEvent",
 }
+# The events of the agent API (from an agent to the broker). The field ``agent`` is optional (DESIGN.md, section 6.2).
+AGENT_EVENT_SCHEMAS = {event: "AgentApi" + name for event, name in EVENT_SCHEMAS.items()}
 
 
 class MessageError(ValueError):
-    """A message does not agree with its schema."""
+    """A message does not agree with its schema.
+
+    ``summary`` is the reason with no content of the message. Use it in a log line: the
+    text of the error can hold a value of the message, e.g. text of a user.
+    """
+
+    def __init__(self, message: str, summary: str | None = None):
+        super().__init__(message)
+        self.summary = summary if summary is not None else message
 
 
 @lru_cache(maxsize=1)
@@ -100,15 +111,23 @@ def validate[T](name: str, message: T) -> T:
         _validator(name).validate(message)
     except ValidationError as exc:
         where = "/".join(str(p) for p in exc.absolute_path) or "message"
-        raise MessageError(f"{name}: {where}: {exc.message}") from None
+        raise MessageError(f"{name}: {where}: {exc.message}",
+                           f"{name}: {where}: the rule '{exc.validator}' is not kept") from None
     return message
 
 
 def validate_event[T](event: str, body: T) -> T:
-    """Check the body of an event of a stream. ``event`` is the SSE event type."""
+    """Check the body of an event of the broker API. ``event`` is the SSE event type."""
     if event not in EVENT_SCHEMAS:
         raise MessageError(f"unknown event type '{event}'")
     return validate(EVENT_SCHEMAS[event], body)
+
+
+def validate_agent_event[T](event: str, body: T) -> T:
+    """Check the body of an event of the agent API. ``event`` is the SSE event type."""
+    if event not in AGENT_EVENT_SCHEMAS:
+        raise MessageError(f"unknown event type '{event}'")
+    return validate(AGENT_EVENT_SCHEMAS[event], body)
 
 
 def error_body(error: str, message: str) -> JsonObject:

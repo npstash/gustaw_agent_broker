@@ -82,6 +82,8 @@ class FakeBroker:
     stream_hang: bool = False
     # A comment line on each stream after this time with no data. None: no heartbeat.
     heartbeat_interval: float | None = None
+    # A wait before each answer that is not a stream, in seconds.
+    delay: float = 0
     stream_connects: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     broker_connects: int = 0
     _streams: dict[str, list[asyncio.Queue[bytes]]] = field(default_factory=lambda: defaultdict(list))
@@ -178,6 +180,8 @@ class FakeBroker:
             status, raw = self.raw_next
             self.raw_next = None
             return web.Response(status=status, body=raw, content_type="application/json")
+        if self.delay and not request.path.endswith("/events"):
+            await asyncio.sleep(self.delay)
         agent = request.match_info.get("agent")
         if agent is not None and agent not in self.agents:
             return error(404, "not_found", f"no agent {agent}")

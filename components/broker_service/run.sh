@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Launcher of the broker service.
+#   run.sh                      in a venv: run the broker service in the foreground (DESIGN.md, section 5.1)
 #   run.sh test [pytest args]   in a venv: install the dev requirements and run the checks and the tests
-# The service is not implemented yet: no other operation exists.
+# The venv installs the component client from ../client as a path dependency (requirements.txt).
 set -euo pipefail
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$dir"
@@ -24,13 +25,16 @@ if ! cmp -s requirements.txt "$venv/requirements.txt" 2>/dev/null \
     cp ../client/pyproject.toml "$venv/client-pyproject.toml"
 fi
 case "${1:-}" in
+    "")
+        exec "$venv/bin/python" -m agent_broker_service
+        ;;
     test)
         shift
         "$venv/bin/python" -m pip install --quiet -r requirements-dev.txt
         exec "$venv/bin/python" -m pytest tests "$@"
         ;;
     *)
-        echo "usage: run.sh test [pytest args]" >&2
+        echo "usage: run.sh | run.sh test [pytest args]" >&2
         exit 2
         ;;
 esac

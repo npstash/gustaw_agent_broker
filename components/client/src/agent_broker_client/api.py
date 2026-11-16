@@ -108,7 +108,7 @@ class BrokerClient(ABC):
 
     @abstractmethod
     async def start_agent(self, agent: str) -> AgentResult:
-        """Start the container of the agent."""
+        """Start the container of the agent. Wait AGENT_CONTROL_TIMEOUT for the answer."""
 
     @abstractmethod
     async def stop_agent(self, agent: str) -> AgentResult:

@@ -30,6 +30,10 @@ class StreamTimeoutError(BrokerUnreachableError):
     """A stream gave no data for HEARTBEAT_TIMEOUT."""
 
 
+class StreamQueueFullError(BrokerError):
+    """The program did not read STREAM_QUEUE_LIMIT events of a stream. The client dropped the connection."""
+
+
 class BadRequestError(BrokerError):
     """``400``: the request is not correct."""
 

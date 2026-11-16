@@ -69,6 +69,16 @@ VALID: dict[str, list[JsonValue]] = {
         {"agent": "claude", "kind": "lifecycle", "command_id": None, "text": "Container started"},
     ],
     "LogEvent": [{"agent": "claude", "component": "api", "level": "INFO", "time": "10:00:00", "message": "up"}],
+    # The events of the agent API: the field agent is optional.
+    "AgentApiStateEvent": [{"session": "ses_1", "state": "working"}, {**SCOPE, "state": "idle"}],
+    "AgentApiStatusEvent": [{"session": "ses_1", "kind": "activity", "text": "Reading a file"}],
+    "AgentApiReplyEvent": [{"session": "ses_1", "command_id": CID, "message": "Done", "language": "en"}],
+    "AgentApiNoticeEvent": [
+        {"session": "ses_1", "kind": "command_failed", "command_id": CID, "text": "Failed"},
+        {"kind": "lifecycle", "command_id": None, "text": "Started"},
+        {"agent": "claude", "kind": "lifecycle", "command_id": None, "text": "Started"},
+    ],
+    "AgentApiLogEvent": [{"component": "api", "level": "INFO", "time": "10:00:00", "message": "up"}],
 }
 INVALID: dict[str, list[JsonValue]] = {
     "SessionState": ["busy", ""],
@@ -113,6 +123,14 @@ INVALID: dict[str, list[JsonValue]] = {
     "LogEvent": [
         {"component": "api", "level": "INFO", "time": "10:00:00", "message": "up"},
         {"agent": "claude", "component": "api", "level": "LOUD", "time": "10:00:00", "message": "up"}],
+    "AgentApiStateEvent": [{"state": "idle"}, {"session": "ses_1", "state": "busy"},
+                           {"session": "ses_1", "state": "idle", "extra": 1}],
+    "AgentApiStatusEvent": [{"session": "ses_1", "kind": "other", "text": "x"}, {"kind": "activity", "text": "x"}],
+    "AgentApiReplyEvent": [{"session": "ses_1", "command_id": CID, "message": "Done"}],
+    "AgentApiNoticeEvent": [
+        {"kind": "command_failed", "command_id": CID, "text": "x"}, {"kind": "lifecycle", "text": "x"}],
+    "AgentApiLogEvent": [{"component": "api", "level": "LOUD", "time": "10:00:00", "message": "up"},
+                         {"agent": "", "component": "api", "level": "INFO", "time": "10:00:00", "message": "up"}],
 }
 
 
@@ -184,6 +202,20 @@ def test_events_map_to_messages() -> None:
         messages.validate_event("state", {"state": "idle"})   # a session event needs agent and session
 
 
+def test_agent_events_need_no_agent_and_broker_events_need_it() -> None:
+    """DESIGN.md, sections 6.2 and 8.2: an agent does not send agent; the broker adds it."""
+    upstream: JsonObject = {"session": "ses_1", "state": "idle"}
+    assert messages.validate_agent_event("state", upstream) == upstream
+    with pytest.raises(messages.MessageError):
+        messages.validate_event("state", upstream)
+    assert messages.validate_event("state", {**upstream, "agent": "claude"})
+    assert set(messages.AGENT_EVENT_SCHEMAS) == set(messages.EVENT_SCHEMAS)
+    with pytest.raises(messages.MessageError):
+        messages.validate_agent_event("bogus", {})
+    with pytest.raises(messages.MessageError):
+        models.parse_session_event("state", '{"session": "ses_1", "state": "idle"}')   # the library is strict
+
+
 def test_error_body() -> None:
     assert messages.error_body("agent_unavailable", "down") == {"error": "agent_unavailable", "message": "down"}
     with pytest.raises(messages.MessageError):
@@ -215,3 +247,19 @@ def test_date_time_check_works_without_an_extra_package() -> None:
 def test_leap_second_gives_a_session() -> None:
     session = models.parse_session(with_value(SESSION, "created_at", "2016-12-31T23:59:60.5Z"))
     assert session.created_at.isoformat() == "2016-12-31T23:59:59.500000+00:00"
+
+
+def test_summary_of_an_error_has_no_content_of_the_message() -> None:
+    """A log line uses ``summary``: the text of the error can hold a value of the message."""
+    with pytest.raises(messages.MessageError) as caught:
+        messages.validate_agent_event("status", {"session": "ses_1", "kind": "activity", "text": {"private": 1}})
+    assert "private" in str(caught.value)
+    assert caught.value.summary == "AgentApiStatusEvent: text: the rule 'type' is not kept"
+    with pytest.raises(messages.MessageError) as caught:
+        messages.validate_event("bogus", {})
+    assert caught.value.summary == str(caught.value)
+
+
+def test_data_with_too_many_levels_is_a_message_error() -> None:
+    with pytest.raises(messages.MessageError):
+        models.decode_json("[" * 200_000)

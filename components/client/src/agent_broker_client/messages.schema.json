@@ -361,12 +361,48 @@
       "additionalProperties": false
     },
     "StateEvent": {
+      "description": "State event of the broker API. The broker adds the field agent; it is required.",
+      "$ref": "#/$defs/AgentApiStateEvent",
+      "required": [
+        "agent"
+      ]
+    },
+    "StatusEvent": {
+      "description": "Status event of the broker API. The broker adds the field agent; it is required.",
+      "$ref": "#/$defs/AgentApiStatusEvent",
+      "required": [
+        "agent"
+      ]
+    },
+    "ReplyEvent": {
+      "description": "Reply event of the broker API. The broker adds the field agent; it is required.",
+      "$ref": "#/$defs/AgentApiReplyEvent",
+      "required": [
+        "agent"
+      ]
+    },
+    "NoticeEvent": {
+      "description": "Notice event of the broker API. The broker adds the field agent; it is required.",
+      "$ref": "#/$defs/AgentApiNoticeEvent",
+      "required": [
+        "agent"
+      ]
+    },
+    "LogEvent": {
+      "description": "Log event of the broker API. The broker adds the field agent; it is required.",
+      "$ref": "#/$defs/AgentApiLogEvent",
+      "required": [
+        "agent"
+      ]
+    },
+    "AgentApiStateEvent": {
+      "description": "State event of the agent API (a session stream). The field agent is optional.",
       "type": "object",
       "properties": {
         "agent": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the agent"
+          "description": "Name of the agent. Optional in the agent API: the broker writes it."
         },
         "session": {
           "type": "string",
@@ -378,19 +414,19 @@
         }
       },
       "required": [
-        "agent",
         "session",
         "state"
       ],
       "additionalProperties": false
     },
-    "StatusEvent": {
+    "AgentApiStatusEvent": {
+      "description": "Status event of the agent API (a session stream). The field agent is optional.",
       "type": "object",
       "properties": {
         "agent": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the agent"
+          "description": "Name of the agent. Optional in the agent API: the broker writes it."
         },
         "session": {
           "type": "string",
@@ -407,20 +443,20 @@
         }
       },
       "required": [
-        "agent",
         "session",
         "kind",
         "text"
       ],
       "additionalProperties": false
     },
-    "ReplyEvent": {
+    "AgentApiReplyEvent": {
+      "description": "Reply event of the agent API (a session stream). The field agent is optional.",
       "type": "object",
       "properties": {
         "agent": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the agent"
+          "description": "Name of the agent. Optional in the agent API: the broker writes it."
         },
         "session": {
           "type": "string",
@@ -439,7 +475,6 @@
         }
       },
       "required": [
-        "agent",
         "session",
         "command_id",
         "message",
@@ -447,18 +482,19 @@
       ],
       "additionalProperties": false
     },
-    "NoticeEvent": {
+    "AgentApiNoticeEvent": {
+      "description": "Notice event of the agent API (a session stream or the agent stream). The field agent is optional.",
       "type": "object",
       "properties": {
         "agent": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the agent"
+          "description": "Name of the agent. Optional in the agent API: the broker writes it."
         },
         "session": {
           "type": "string",
           "minLength": 1,
-          "description": "Session ID. Absent in an event of the broker stream."
+          "description": "Session ID. Absent in an event of the agent stream or the broker stream."
         },
         "kind": {
           "enum": [
@@ -479,7 +515,6 @@
         }
       },
       "required": [
-        "agent",
         "kind",
         "command_id",
         "text"
@@ -504,13 +539,14 @@
         ]
       }
     },
-    "LogEvent": {
+    "AgentApiLogEvent": {
+      "description": "Log event of the agent API (the agent stream). The field agent is optional.",
       "type": "object",
       "properties": {
         "agent": {
           "type": "string",
           "minLength": 1,
-          "description": "Name of the agent"
+          "description": "Name of the agent. Optional in the agent API: the broker writes it."
         },
         "component": {
           "type": "string"
@@ -531,7 +567,6 @@
         }
       },
       "required": [
-        "agent",
         "component",
         "level",
         "time",

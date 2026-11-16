@@ -587,9 +587,11 @@ def test_two_readers_of_the_events_end_after_close(tls: TlsFiles) -> None:
     run(test, tls)
 
 
-def test_reader_that_does_not_read_gets_each_event_and_the_queue_has_a_limit(
+def test_full_queue_drops_the_connection_and_keeps_the_waiting_events(
         tls: TlsFiles, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(stream_module, "QUEUE_LIMIT", 3)
+    """DESIGN.md, section 6.4: at STREAM_QUEUE_LIMIT the client drops the connection and connects again
+    only after the program has read the waiting events."""
+    monkeypatch.setattr(stream_module, "STREAM_QUEUE_LIMIT", 3)
 
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
@@ -599,14 +601,36 @@ def test_reader_that_does_not_read_gets_each_event_and_the_queue_has_a_limit(
             for index in range(10):
                 broker.push(session_id, "status", {**scope(sc), "kind": "activity", "text": f"s{index}"})
             queue = sc._stream._queue
-            await until(lambda: queue.qsize() == 3)
-            await asyncio.sleep(0.2)
-            assert queue.qsize() == 3
+            await until(lambda: broker.open_streams(session_id) == 0)
+            assert queue.qsize() >= 3
+            assert isinstance(sc.last_error, abc_.StreamQueueFullError)
+            await asyncio.sleep(RECONNECT * 3)
+            assert broker.stream_connects[session_id] == 1   # no new connection while events wait
+            assert state(sc) is abc_.ConnectionState.RECONNECTING
             items = sc.events()
-            got = [await next_item(items) for _ in range(11)]
+            waiting = queue.qsize()
+            got = [await next_item(items) for _ in range(waiting)]
             assert isinstance(got[0], abc_.StateEvent)
-            assert [e.text for e in got[1:] if isinstance(e, abc_.StatusEvent)] == [f"s{i}" for i in range(10)]
-            assert broker.stream_connects[session_id] == 1
+            texts = [e.text for e in got[1:] if isinstance(e, abc_.StatusEvent)]
+            assert texts == [f"s{i}" for i in range(len(texts))] and len(texts) == waiting - 1
+            assert isinstance(await next_item(items), abc_.StateEvent)   # the new connection
+            assert broker.stream_connects[session_id] == 2
+    run(test, tls)
+
+
+def test_agent_control_has_its_own_timeout(tls: TlsFiles) -> None:
+    """DESIGN.md, section 6.4: start, stop and restart wait AGENT_CONTROL_TIMEOUT; each other request keeps its timeout."""
+    assert abc_.AGENT_CONTROL_TIMEOUT_S == 60.0
+
+    async def test(broker: FakeBroker) -> None:
+        bc = abc_.HttpBrokerClient(broker.url, USERNAME, PASSWORD, "c", cert_file=tls.cert, request_timeout=0.2,
+                                   agent_control_timeout=2)
+        async with bc:
+            broker.delay = 0.5
+            assert (await bc.restart_agent("claude")).container_state is abc_.ContainerState.RUNNING
+            with pytest.raises(abc_.BrokerUnreachableError):
+                await bc.list_agents()
+            broker.delay = 0
     run(test, tls)
 
 
@@ -722,9 +746,9 @@ def test_unknown_event_type_of_a_session_stream(event: str) -> None:
     (abc_.CommandStatus, ["CommandAccepted", "properties", "status"]),
     (abc_.Applied, ["ConfigSetResult", "properties", "applied"]),
     (abc_.ErrorCode, ["ErrorResponse", "properties", "error"]),
-    (abc_.StatusKind, ["StatusEvent", "properties", "kind"]),
-    (abc_.NoticeKind, ["NoticeEvent", "properties", "kind"]),
-    (abc_.LogLevel, ["LogEvent", "properties", "level"]),
+    (abc_.StatusKind, ["AgentApiStatusEvent", "properties", "kind"]),
+    (abc_.NoticeKind, ["AgentApiNoticeEvent", "properties", "kind"]),
+    (abc_.LogLevel, ["AgentApiLogEvent", "properties", "level"]),
     (abc_.Provider, ["AgentList", "properties", "agents", "items", "properties", "provider"]),
 ])
 def test_enums_agree_with_the_schema(enum_type: type[enum.StrEnum], path: list[str]) -> None:

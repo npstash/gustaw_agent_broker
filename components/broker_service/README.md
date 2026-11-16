@@ -1,18 +1,44 @@
 # broker_service
 
-The broker service: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), section 5.1.
+The broker service: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.1, 6.1, 6.2 and 8.
 
-Status: skeleton only. The package `agent_broker_service` has no code yet.
+The provider `opencode` (section 6.3) is not implemented yet. The service skips an agent with this provider and writes a WARNING.
 
 ## Contents
 
 | Item | Use |
 | --- | --- |
-| `src/agent_broker_service/` | The service package. |
+| `src/agent_broker_service/app.py` | Start and stop: `Broker` and `main`. |
+| `src/agent_broker_service/api.py` | The HTTPS API: basic authentication, schema checks, error answers, the routes. |
+| `src/agent_broker_service/router.py` | The agent of a URL, with its provider and its container. |
+| `src/agent_broker_service/provider.py` | The provider interface. |
+| `src/agent_broker_service/agent_api.py` | The provider `agent_api`: HTTP to an agent that implements the agent API. |
+| `src/agent_broker_service/proxy.py` | The event proxy: session streams, agent streams, the broker stream. |
+| `src/agent_broker_service/streams.py` | The client streams: send queue, heartbeat, close. |
+| `src/agent_broker_service/docker.py` | Container control: direct HTTP calls on the Docker socket. |
+| `src/agent_broker_service/settings.py` | The configuration values and their checks. |
+| `src/agent_broker_service/tls.py`, `logs.py`, `version.py`, `errors.py` | The TLS context, the log lines, the version line, the errors. |
 | `config/config.yaml` | The default configuration ([DESIGN.md](../../sdd/DESIGN.md), sections 8.3 and 12). No secrets. |
-| `requirements.txt` | The pinned dependencies. It installs [../client](../client/README.md). |
+| `requirements.txt` | The pinned dependencies. It installs [../client](../client/README.md) as a path dependency. |
 
 ## Run
 
-- Tests: `run.sh test`. The command runs the type check (mypy, strict) and the tests.
+- Service: `run.sh` with no verb. The service runs in the foreground until SIGTERM or SIGINT.
+- At start, the service opens the vault entries `Agent Broker TLS 01` and `Agent Broker API 01` with the vault tool. The clone key of this clone must open the vault.
+- The certificate is `../client/tls/server.crt` (`cert.file`). Make it with `../client/run.sh cert`.
+- The log lines go to the standard error output. The first line gives the version: commit, date and subject.
+- In a Docker image, give the version in `AGENT_BROKER_COMMIT`, `AGENT_BROKER_COMMIT_DATE` and `AGENT_BROKER_COMMIT_SUBJECT`.
+
+## Configure
+
+- Change a value in `.local_assets/config/local.yaml`. A local value replaces the default value of the same key.
+- A local file cannot add a key, e.g. a new agent. Add an agent in `config/config.yaml`.
+- An unknown provider name or a value that is not correct stops the start with an error.
+- `docker.socket` is the path of the Docker socket. The account of the service must have access to it.
+
+## Test
+
+- `run.sh test`. The command runs the type check (mypy, strict) and the tests.
+- The tests start the real broker with TLS and use the real client library. They use a fake agent (`tests/fake_agent.py`), a fake Docker engine on a Unix socket (`tests/fake_docker.py`) and fake secrets (`tests/rig.py`).
+- The tests read no vault and use no real Docker socket. They write only into `.local_assets/`.
 - The venv is in `.local_assets/venv`.

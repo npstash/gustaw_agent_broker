@@ -17,6 +17,8 @@ def test_default_configuration_follows_the_design() -> None:
     assert conf.get_int("server.port") == 38443
     assert conf.get_int("streams.heartbeat_interval_s") == 15
     assert conf.get_int("streams.heartbeat_timeout_s") == 45
+    assert conf.get_int("streams.queue_limit") == 100
+    assert conf.get_str("docker.socket") == "/var/run/docker.sock"
     assert conf.get_list("language.languages") == ["en", "pl"]
     assert conf.get_float("language.threshold") == 0.70
     assert conf.get_str("cert.file") == "../client/tls/server.crt"

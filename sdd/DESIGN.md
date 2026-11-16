@@ -152,7 +152,8 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 - After that, a stream carries only live events.
 - Several streams can read one session. Each one gets each event.
 - When the broker loses the upstream stream of a session, it closes the client stream. The client connects again.
-- The broker never drops an event of a stream. If a client reads too slowly, the broker closes the stream.
+- Each client stream has a send queue of STREAM_QUEUE_LIMIT (100) events. When an event comes and the queue is full, the broker treats the link as broken. It closes the client stream and its upstream stream.
+- The broker drops no event silently. It writes the number of lost events of a closed stream to its log.
 
 **Heartbeat.** The broker writes an SSE comment line on each stream after HEARTBEAT_INTERVAL (15 s) with no data. A client that gets no data for HEARTBEAT_TIMEOUT (45 s) closes the connection and connects again. If a heartbeat write fails, the broker closes the upstream stream of that client.
 
@@ -178,6 +179,7 @@ Rules for an agent:
 - `DELETE /sessions/{id}` removes the stored chat of the session.
 - The agent detects the language of each reply. `language` is required in each `reply` event.
 - The agent sends no heartbeat. The connection to the broker is local.
+- The agent does not send the field `agent` in an event. The broker writes the name of the agent into each event that it passes to a client. In the agent API, the field is optional (section 8.2).
 - The agent has no operation that restarts it. The broker restarts its container.
 - An open session stream tells the agent that a client uses the session. The agent decides when it opens and closes its resources for the session.
 
@@ -220,6 +222,9 @@ The provider `opencode` implements the operations of section 6.1 with the OpenCo
 - The session client and the broker client wait RECONNECT_INTERVAL (5 s) between two tries to connect.
 - To change the session, a program makes a new session client. It closes the old one when the old one expects no more events, or after a timeout of the program.
 - A broker client holds one broker stream, with the same reconnect rule.
+- Each stream holds a maximum of STREAM_QUEUE_LIMIT (100) events that the program did not read. At this limit, the library treats the link as broken and drops the connection. It keeps the waiting events.
+- After a drop for the limit, the library connects again by the reconnect rule. It connects only after the program has read the waiting events.
+- The library waits AGENT_CONTROL_TIMEOUT (60 s) for the answer to start, stop and restart of an agent. Each other request keeps its timeout.
 
 ### 6.5 Command line
 
@@ -293,6 +298,7 @@ Changes against the schema of voice client:
 | `AgentList`, `AgentResult`, `AgentStatus` | New. `AgentList`: `name`, `provider`, `container_state`, `agent_state` and `version` of each agent. `AgentResult`: `agent`, `container_state`. `AgentStatus`: `uptime_s`, `version`, `open_sessions`. `AgentStatus` replaces `ServerStatus`. |
 | `StateEvent`, `StatusEvent`, `ReplyEvent`, `NoticeEvent` | New required fields `agent` and `session` in the events of a session stream. |
 | `NoticeEvent`, `LogEvent` of the broker stream | New required field `agent`. |
+| `AgentApiStateEvent`, `AgentApiStatusEvent`, `AgentApiReplyEvent`, `AgentApiNoticeEvent`, `AgentApiLogEvent` | New: the events of the agent API. The field `agent` is optional. |
 | `ErrorResponse` | New error values: `workspace_not_found`, `agent_unavailable`. |
 | `RestartResult`, `ServerStatus` | Removed. |
 | `CommandRequest`, `CommandAccepted`, `Config*`, `SessionResult`, `SessionState`, `Language` | No change. |
@@ -300,6 +306,7 @@ Changes against the schema of voice client:
 - `created_at` and `last_modified` are ISO 8601 date-time strings in UTC (`format: date-time`).
 - `container_state` is a Docker state: `running`, `exited`, `restarting`, `paused`, `created` or `dead`. It is `missing` when no container exists.
 - `agent_state` is `ok` or `unreachable`.
+- The events have two definitions. An agent sends the events of the agent API (`AgentApi...Event`). The broker adds `agent` and sends the events of the broker API (`StateEvent` etc.). Each event of the broker API refers to its event of the agent API and requires `agent`.
 
 ### 8.3 Configuration
 
@@ -312,11 +319,13 @@ Changes against the schema of voice client:
 | `agents.<name>.url` | The local URL of the agent |
 | `agents.<name>.container` | The name of the container of the agent |
 | `streams.heartbeat_interval_s`, `streams.heartbeat_timeout_s` | HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT |
+| `streams.queue_limit` | STREAM_QUEUE_LIMIT of the broker |
+| `docker.socket` | DOCKER_SOCKET |
 | `language.languages`, `language.threshold` | LANGUAGES, LANGUAGE_THRESHOLD |
 | `cert.file` | The certificate file |
 | `credentials.vault`, `credentials.secrets` | The name of the vault and the vault entry of each secret |
 
-The client library reads no key of this file. RECONNECT_INTERVAL (5 s) is a value of the client library (section 12).
+The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CONTROL_TIMEOUT (60 s) and its own STREAM_QUEUE_LIMIT (100) are values of the client library (section 12).
 
 `config/config.yaml` of the component client is the only source of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it.
 
@@ -351,7 +360,7 @@ The vault is the repository `vault-agent_broker`.
 | Dependency | Container | Use |
 | --- | --- | --- |
 | Python 3.14, aiohttp | Broker service, client library | HTTP server, HTTP client, SSE |
-| Docker Engine API | Broker service | Container control |
+| Docker Engine API | Broker service | Container control: direct HTTP calls on the Docker socket with aiohttp, no Docker library |
 | lingua-language-detector | Broker service | Language of the replies of OpenCode |
 | maya-agent-kit (vault tool) | Broker service, certtool | Secrets |
 
@@ -362,7 +371,6 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 ## 11. Open issues
 
 - **MISSING:** the configuration values of OpenCode that `GET` and `PUT /agents/opencode/config` give.
-- **MISSING:** the library for the Docker Engine API.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on broker-host is its workspace folder.
 - The session log route of OpenCode is marked experimental.
@@ -377,6 +385,9 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | HEARTBEAT_TIMEOUT | 45 | s | `streams.heartbeat_timeout_s` | Time with no data after which a client connects again |
 | REPLY_REPLAY | 600 | s | agent configuration | Maximum age of a reply that a new stream gets again |
 | RECONNECT_INTERVAL | 5 | s | — (value of the client library) | Wait of the session client and the broker client between two tries to connect |
+| STREAM_QUEUE_LIMIT | 100 | events | `streams.queue_limit` (broker); value of the client library | Waiting events of a stream at which the side that notices it drops the connection |
+| AGENT_CONTROL_TIMEOUT | 60 | s | — (value of the client library) | Wait of the client library for the answer to start, stop and restart of an agent |
+| DOCKER_SOCKET | `/var/run/docker.sock` | — | `docker.socket` | Path of the Docker socket |
 | LANGUAGES | `en`, `pl` | — | `language.languages` | Languages of the detection in the provider `opencode` |
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
 | CERT_NAMES | `broker-host`, `localhost`, `127.0.0.1`, `192.0.2.10`, `broker.example.net` | — | `cert.names` (component client) | Names in the certificate |

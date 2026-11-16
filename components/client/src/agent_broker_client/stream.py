@@ -7,8 +7,10 @@ failed stream, the task waits RECONNECT_INTERVAL and connects again, until ``clo
 The task does not connect again after a ``404`` of a session stream, a ``401`` or a TLS
 verification failure. Then ``items()`` raises the error.
 
-The queue holds a maximum of QUEUE_LIMIT events. While the queue is full, the task reads no
-data from the connection and drops no event. The broker closes the stream of a slow reader.
+The queue holds STREAM_QUEUE_LIMIT events that the caller did not read (DESIGN.md, section 6.4).
+At this limit, the task drops the connection. It keeps the events in the queue, and also the
+other events of the last received data. It connects again by the reconnect rule only after
+the caller has read each event in the queue. It drops no event that it received.
 """
 from __future__ import annotations
 
@@ -24,15 +26,16 @@ import aiohttp
 
 from . import sse
 from .errors import (BrokerError, BrokerTlsError, BrokerUnreachableError, SessionGoneError,
-                     StreamTimeoutError, UnauthorizedError, error_for)
+                     StreamQueueFullError, StreamTimeoutError, UnauthorizedError, error_for)
 from .jsontypes import JsonValue
 from .messages import MessageError
 from .models import InvalidEvent, parse_error
 
 log = logging.getLogger("agent_broker.client")
 
-# The maximum number of events in the queue of one stream. Choice of the library: the DESIGN gives none.
-QUEUE_LIMIT = 1000
+# STREAM_QUEUE_LIMIT (DESIGN.md, section 12): the number of events that the caller did not read, at which
+# the stream drops the connection.
+STREAM_QUEUE_LIMIT = 100
 
 
 class ConnectionState(enum.StrEnum):
@@ -84,9 +87,9 @@ class EventStream[T]:
         self._on_connection = on_connection
         self.state = ConnectionState.NOT_STARTED
         self.last_error: BrokerError | None = None
-        # ``_put`` keeps the limit. The queue itself has none, so that ``_End`` always fits.
+        # ``_read_once`` keeps the limit. The queue itself has none, so that ``_End`` always fits.
         self._queue: asyncio.Queue[T | InvalidEvent | _End] = asyncio.Queue()
-        self._room = asyncio.Event()
+        self._drained = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._end: _End | None = None
 
@@ -127,15 +130,15 @@ class EventStream[T]:
                 self._end = item
                 self._queue.put_nowait(item)   # for each other caller that waits
                 continue
-            self._room.set()
+            if self._queue.empty():
+                self._drained.set()
             yield item
 
-    async def _put(self, item: T | InvalidEvent) -> None:
-        """Put an event into the queue. Wait while the queue is full."""
-        while self._queue.qsize() >= QUEUE_LIMIT:
-            self._room.clear()
-            await self._room.wait()
-        self._queue.put_nowait(item)
+    async def _wait_until_drained(self) -> None:
+        """Wait until the caller has read each event in the queue."""
+        while not self._queue.empty():
+            self._drained.clear()
+            await self._drained.wait()
 
     def _set_state(self, state: ConnectionState) -> None:
         if state is self.state or self.state is ConnectionState.CLOSED:
@@ -163,6 +166,9 @@ class EventStream[T]:
                     self._task = None
                     return
                 log.info("Stream %s: %s", self.url, exc)
+                if isinstance(exc, StreamQueueFullError):
+                    self._set_state(ConnectionState.RECONNECTING)
+                    await self._wait_until_drained()
             except Exception as exc:  # noqa: BLE001 - each other failure also means: connect again
                 self.last_error = BrokerError(f"the stream failed: {exc!r}")
                 log.exception("Stream %s failed", self.url)
@@ -191,7 +197,10 @@ class EventStream[T]:
                     if not chunk:
                         return
                     for event, data in decoder.feed(text.decode(chunk)):
-                        await self._put(self._item(event, data))
+                        self._queue.put_nowait(self._item(event, data))
+                    if self._queue.qsize() >= STREAM_QUEUE_LIMIT:
+                        raise StreamQueueFullError(
+                            f"{self._queue.qsize()} events are not read; the client drops the connection")
         except TimeoutError:
             raise BrokerUnreachableError(f"no answer in {self.request_timeout} s") from None
         except aiohttp.ClientSSLError as exc:

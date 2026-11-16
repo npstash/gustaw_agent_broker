@@ -4,6 +4,8 @@ server:
   host: 0.0.0.0              # BROKER_HOST
   port: 38443                # BROKER_PORT
 
+# The provider of each agent: agent_api or opencode. The provider opencode is not implemented yet;
+# the service skips such an agent with a WARNING. A local file cannot add an agent.
 agents:
   claude:
     provider: agent_api
@@ -17,6 +19,10 @@ agents:
 streams:
   heartbeat_interval_s: 15   # HEARTBEAT_INTERVAL
   heartbeat_timeout_s: 45    # HEARTBEAT_TIMEOUT
+  queue_limit: 100           # STREAM_QUEUE_LIMIT: waiting events of a client stream
+
+docker:
+  socket: /var/run/docker.sock   # DOCKER_SOCKET
 
 language:
   languages: [en, pl]        # LANGUAGES
