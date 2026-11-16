@@ -392,8 +392,8 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on broker-host is its workspace folder.
 - The session log route of OpenCode is marked experimental.
-- Not verified: the build of the image and the start of the container (section 9). `compose.yaml` is not checked with `docker compose config`.
-- Not verified: a clone key of the vault that is encrypted with a passphrase in the OS keyring does not open in the container. The key of the host clone must be plain, or open in another way.
+- Not verified: the broker with a real agent behind it. The build, the start, the login, the certificate and the event stream are verified on broker-host.
+- The clone key of the host must be a plain file that UID 1000 can read, because the container has no OS keyring. Verified on broker-host with such a key. Not verified: a key that the OS keyring protects.
 
 ## 12. Default values
 
