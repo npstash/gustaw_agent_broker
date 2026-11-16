@@ -387,6 +387,7 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 
 ## 11. Open issues
 
+- `update.sh` pulls the project and only checks the dependencies (`maya-agent-kit`, the vault). A newer project can need a newer dependency. The owner pulls the dependencies by hand. Open: `update.sh` pulls them too, or they become submodules of the project.
 - **MISSING:** the configuration values of OpenCode that `GET` and `PUT /agents/opencode/config` give.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on broker-host is its workspace folder.
