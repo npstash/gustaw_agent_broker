@@ -10,7 +10,7 @@ The Agent Broker gives one API for several coding agents. A client selects an ag
 
 ## 2. Architectural drivers
 
-- Functional requirements: section 6. This project has no SRS.
+- Functional requirements: none. This project has no SRS.
 - Quality attributes: none defined. This project has no QAS.
 - Constraints:
   - The broker keeps no state on disk. A restart of the broker loses no data.
@@ -287,7 +287,7 @@ sequenceDiagram
 
 ### 8.2 Message schemas
 
-`messages.schema.json` in this repository is the contract (JSON Schema, draft 2020-12). It comes from the schema of voice client (DESIGN of voice client, section 8.3). Each client and each agent reads this file from the submodule. No project keeps a copy.
+`messages.schema.json` in this repository is the contract (JSON Schema, draft 2020-12). It comes from the schema of the earlier API of the Claude server. Each client and each agent reads this file from the submodule. No project keeps a copy.
 
 Changes against the schema of voice client:
 
