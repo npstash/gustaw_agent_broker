@@ -125,7 +125,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `GET /agents/{agent}/sessions/{id}/events` | Session stream (SSE). See "Streams". |
 | `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. A text that starts with `/` is a slash command of the agent. The agent replies to a slash command that it does not know with a text that says so. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` in the state `working`. In the state `stopped`, the agent tries the session again before it runs the command ("Failures"). |
 | `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. The session stream gets `notice` `command_dropped` for it, then `state` `idle`. With no command that runs: no action and no start of resources. Answer `SessionResult` with the current state. |
-| Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable` when the broker cannot reach the agent. |
+| Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable`. `503` `agent_unavailable` comes when the broker cannot reach the agent or the Docker engine, and when the broker stops. `404` also comes when the container of an agent does not exist. |
 
 **Session.** A session is a stored chat of one agent.
 

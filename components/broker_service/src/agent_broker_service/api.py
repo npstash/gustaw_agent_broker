@@ -132,7 +132,7 @@ class Api:
         except ContainerMissingError as exc:
             return error_answer(404, "not_found", str(exc))
         except DockerUnavailableError as exc:
-            # Choice of the service: the DESIGN gives no error value for Docker. Docker is part of the agent.
+            # DESIGN.md, section 6.1.1, "Errors": Docker is part of the agent.
             log.warning("%s %s: %s", request.method, request.path, exc)
             return error_answer(503, "agent_unavailable", str(exc))
 
