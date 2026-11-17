@@ -28,14 +28,14 @@ System boundary: the broker service, its client library and the agent API contra
 flowchart TD
     C1[Voice client of voice client<br/><i>client</i>] -->|commands, events, HTTPS| B[Agent Broker<br/><i>this system</i>]
     C2[RAG client<br/><i>client, future</i>] -->|commands, events, HTTPS| B
-    B -->|agent API, HTTP on 127.0.0.1| A1[Claude server of voice client<br/><i>agent</i>]
+    B -->|agent API, HTTP on 127.0.0.1| A1[Claude server of claude-server<br/><i>agent</i>]
     B -->|OpenCode API, HTTP on 127.0.0.1| A2[OpenCode<br/><i>agent</i>]
     B -->|start, stop, restart, inspect; Docker socket| D[Docker engine<br/><i>external system</i>]
     B -->|reads secrets| V[(vault-agent_broker<br/><i>vault</i>)]
 ```
 
 - **Client:** a program that sends commands to an agent and reads the events. It uses the client library.
-- **Claude server:** the agent of voice client. It implements the agent API of this project.
+- **Claude server:** the agent for Claude Code, project claude-server. It implements the agent API of this project.
 - **OpenCode:** an agent with its own API. The broker has an adapter for it.
 - **Docker engine:** runs the agent containers.
 - **vault-agent_broker:** holds the secrets of the broker (section 8.4).

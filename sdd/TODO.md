@@ -10,7 +10,7 @@ Open work and open issues. Check an item when its work is committed. The steps a
 - [x] 1d. Project files, `certtool`, new certificate with CERT_NAMES (DESIGN, sections 6.5, 8.3, 8.4).
 - [x] 1e. `compose.yaml` and `update.sh` (DESIGN, section 9).
 
-## Step 6: OpenCode
+## Step 7: OpenCode
 
 - [ ] 6a. Provider `opencode` with the language detection (DESIGN, section 6.3).
 
