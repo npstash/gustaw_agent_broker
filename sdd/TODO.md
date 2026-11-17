@@ -18,10 +18,6 @@ Open work and open issues. Check an item when its work is committed. The steps a
 
 The open issues are in [DESIGN.md](DESIGN.md), section 11.
 
-## Tests of dependencies that are not direct
-
-- Find each test of this project that tests a dependency that is not direct. Remove it. A project tests only its own code and its direct dependencies.
-
 ## Session states and failures (DESIGN, section 6.1.1)
 
 - Provider `opencode` (step 7): follow the session states and the failures; send only the state and the reply replay from the session log.
