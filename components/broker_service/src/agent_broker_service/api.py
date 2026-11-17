@@ -239,7 +239,12 @@ class Api:
     async def command(self, request: web.Request) -> web.Response:
         entry = self._entry(request)
         body = await _body(request, "CommandRequest")
-        return json_answer("CommandAccepted", await entry.provider.send_command(request.match_info["id"], body), 202)
+        session_id = request.match_info["id"]
+        answer = await entry.provider.send_command(session_id, body)
+        command_id = body.get("id")
+        if answer.get("status") == "accepted" and isinstance(command_id, str):
+            self.proxy.note_command(entry.name, session_id, command_id)
+        return json_answer("CommandAccepted", answer, 202)
 
     async def interrupt(self, request: web.Request) -> web.Response:
         entry = self._entry(request)

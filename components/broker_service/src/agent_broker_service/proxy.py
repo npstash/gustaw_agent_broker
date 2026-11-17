@@ -47,6 +47,15 @@ def lifecycle(agent: str, text: str) -> JsonObject:
     return {"agent": agent, "kind": "lifecycle", "command_id": None, "text": text}
 
 
+UPSTREAM_ENDED = "The stream of the agent ended while the command ran."
+
+
+def command_failed(agent: str, session_id: str, command_id: str | None) -> JsonObject:
+    """The notice for an open command when the upstream session stream ends (DESIGN.md, section 6.1.1, "Failures")."""
+    return {"agent": agent, "session": session_id, "kind": "command_failed", "command_id": command_id,
+            "text": UPSTREAM_ENDED}
+
+
 def container_text(event: ContainerEvent) -> str:
     if event.action == "die":
         return f"container ended, exit code {event.exit_code if event.exit_code is not None else 'unknown'}"
@@ -67,6 +76,8 @@ class EventProxy:
         self.hub = BrokerHub()
         self.sessions = SessionStreams()
         self.reachable: dict[str, bool | None] = {entry.name: None for entry in router.entries}
+        # The ID of the last accepted command of each session: (agent, session ID) -> command ID.
+        self.commands: dict[tuple[str, str], str] = {}
         self._tasks: list[asyncio.Task[None]] = []
 
     # --- Start and stop --------------------------------------------------------------
@@ -194,7 +205,7 @@ class EventProxy:
                                   limit=self.queue_limit, heartbeat=self.heartbeat)
             self.sessions.add(entry.name, stream)
             log.info("%s: open for %s", stream.label, request.remote)
-            pump = asyncio.create_task(self._pump(entry.name, upstream, stream), name=f"pump {stream.label}")
+            pump = asyncio.create_task(self._pump(entry.name, session_id, upstream, stream), name=f"pump {stream.label}")
             await stream.run()
         finally:
             if pump is not None:
@@ -208,8 +219,16 @@ class EventProxy:
             stream.abort()
         return response
 
-    async def _pump(self, agent: str, upstream: UpstreamStream, stream: ClientStream) -> None:
-        """Pass each upstream event to the client stream. End the client stream when the upstream stream ends."""
+    def note_command(self, agent: str, session_id: str, command_id: str) -> None:
+        """Keep the ID of an accepted command, for a notice if the upstream stream ends while it runs."""
+        self.commands[(agent, session_id)] = command_id
+
+    async def _pump(self, agent: str, session_id: str, upstream: UpstreamStream, stream: ClientStream) -> None:
+        """Pass each upstream event to the client stream. End the client stream when the upstream stream ends.
+
+        If the upstream stream ends in the state working, send command_failed for the open command first.
+        """
+        state = ""
         try:
             async for event, body in upstream.events():
                 out = with_agent(agent, body)
@@ -218,6 +237,8 @@ class EventProxy:
                 except MessageError as exc:
                     log.warning("%s: an event is not correct; it is not passed: %s", stream.label, exc.summary)
                     continue
+                if event == "state":
+                    state = str(out.get("state", ""))
                 if not stream.offer(event, out):
                     return
             log.info("%s: the agent ended the stream", stream.label)
@@ -226,4 +247,6 @@ class EventProxy:
         except Exception:  # noqa: BLE001 - each failure of the upstream stream ends the client stream
             log.exception("%s: the upstream stream failed", stream.label)
         finally:
+            if state == "working":
+                stream.offer("notice", command_failed(agent, session_id, self.commands.get((agent, session_id))))
             stream.end()

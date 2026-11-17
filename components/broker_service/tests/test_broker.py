@@ -427,6 +427,24 @@ def test_upstream_end_closes_the_client_stream_and_the_client_connects_again(in_
     run(test, in_tmp)
 
 
+def test_upstream_end_while_working_gives_command_failed(in_tmp: Path) -> None:
+    """DESIGN.md, section 6.1.1, "Failures": the upstream session stream ends in the state working."""
+    async def test(rig: Rig) -> None:
+        session_id = rig.agent.add_session()
+        async with rig.client() as bc:
+            sc = bc.session("claude", session_id)
+            items = sc.events()
+            assert isinstance(await next_item(items), abc_.StateEvent)
+            command_id = uuid.uuid4()
+            await sc.send_command(command_id, "work")
+            assert isinstance(await next_item(items), abc_.StateEvent)    # working
+            rig.agent.close_streams(session_id)
+            notice = await next_item(items)
+            assert isinstance(notice, abc_.NoticeEvent)
+            assert (notice.kind, notice.command_id) == ("command_failed", str(command_id))
+    run(test, in_tmp)
+
+
 def test_client_that_goes_away_closes_the_upstream_stream(in_tmp: Path) -> None:
     async def test(rig: Rig) -> None:
         session_id = rig.agent.add_session()
@@ -677,7 +695,7 @@ def test_failure_of_the_pump_ends_the_client_stream(in_tmp: Path, lines: list[st
     async def test(rig: Rig) -> None:
         stream = ClientStream(make_mocked_request("GET", "/events"), web.StreamResponse(), label="s", limit=2,
                               heartbeat=1)
-        await rig.broker.proxy._pump("claude", Broken(), stream)
+        await rig.broker.proxy._pump("claude", "ses_x", Broken(), stream)
         assert stream.waiting == 1   # the end mark
     run(test, in_tmp)
     assert [line for line in lines if "the upstream stream failed" in line]

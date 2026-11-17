@@ -24,6 +24,5 @@ The open issues are in [DESIGN.md](DESIGN.md), section 11.
 
 ## Session states and failures (DESIGN, section 6.1.1)
 
-- Broker: send `command_failed` for the open command when an upstream session stream ends in the state `working`.
 - Provider `opencode` (step 7): follow the session states and the failures; send only the state and the reply replay from the session log.
 - Provider `opencode` (step 7): the keys `logging.levels.<component>` and the `log` events; the reply to an unknown slash command.
