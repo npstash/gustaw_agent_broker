@@ -157,7 +157,7 @@ A stream of a `stopped` session gets `state` `stopped` and starts nothing.
 - A command that ends with an error gives `notice` `command_failed` with its `command_id` and the error text. Then `state` `idle`.
 - A failure of the agent while a command runs gives `notice` `command_failed` for that command. Then the agent tries to continue the session: `state` `idle` if it can, `stopped` if it cannot.
 - A command that ends with no result gives `notice` `command_dropped`: an interrupt, or a command that the agent drops.
-- `notice` `lifecycle` on a session stream tells only about the session: it started, was resumed, has a new chat, or stopped.
+- `notice` `lifecycle` on a session stream tells only about the session: it started, was resumed, has a new chat, crashed, or stopped.
 - When the upstream session stream ends in the state `working`, e.g. the container of the agent ends, the broker sends `notice` `command_failed` for the open command. Then it closes the client stream. The client connects again.
 - The broker stream gives the end of a container (`notice` `lifecycle`). While the agent is not reachable, each call for it gives `503` `agent_unavailable`.
 
