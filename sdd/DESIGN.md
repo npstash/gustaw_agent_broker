@@ -114,7 +114,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `POST /agents/{agent}/start` | Starts the container of the agent. `AgentResult`. |
 | `POST /agents/{agent}/stop` | Stops the container. The broker closes each session stream of the agent. `AgentResult`. |
 | `POST /agents/{agent}/restart` | Restarts the container. The broker closes each session stream of the agent. `AgentResult`. |
-| `GET /agents/{agent}/config` | `ConfigValues`: all configuration values of the agent. |
+| `GET /agents/{agent}/config` | `ConfigValues`: all configuration values of the agent. Each agent has the keys `logging.levels.<component>` with the values `ERROR`, `WARNING`, `INFO` or `DEBUG`. The level of a component selects its `log` events on the broker stream. The other keys belong to the agent. |
 | `GET /agents/{agent}/config/{key}` | `ConfigValue`: one value. Dotted key. |
 | `PUT /agents/{agent}/config/{key}` | Body `ConfigSetRequest`. `ConfigSetResult` with `applied`: `now` or `at_restart`. |
 | `GET /events` | Broker stream (SSE) for all agents. See "Streams". |
@@ -123,7 +123,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `GET /agents/{agent}/sessions/{id}` | `Session` with its current `state`. The broker reads it from the agent at each call. |
 | `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. |
 | `GET /agents/{agent}/sessions/{id}/events` | Session stream (SSE). See "Streams". |
-| `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` in the state `working`. In the state `stopped`, the agent tries the session again before it runs the command ("Failures"). |
+| `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. A text that starts with `/` is a slash command of the agent. The agent replies to a slash command that it does not know with a text that says so. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` in the state `working`. In the state `stopped`, the agent tries the session again before it runs the command ("Failures"). |
 | `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. The session stream gets `notice` `command_dropped` for it, then `state` `idle`. With no command that runs: no action and no start of resources. Answer `SessionResult` with the current state. |
 | Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable` when the broker cannot reach the agent. |
 
@@ -160,6 +160,16 @@ A stream of a `stopped` session gets `state` `stopped` and starts nothing.
 - `notice` `lifecycle` on a session stream tells only about the session: it started, was resumed, has a new chat, crashed, or stopped.
 - When the upstream session stream ends in the state `working`, e.g. the container of the agent ends, the broker sends `notice` `command_failed` for the open command. Then it closes the client stream. The client connects again.
 - The broker stream gives the end of a container (`notice` `lifecycle`). While the agent is not reachable, each call for it gives `503` `agent_unavailable`.
+
+**Events.**
+
+| Event | Meaning |
+| --- | --- |
+| `state` | The state of the session ("Session state"). |
+| `status` | A short text for a person about the current activity of the agent, e.g. the tool that it uses. A client can speak it. |
+| `reply` | The answer to a command, with its `command_id` and its `language`. |
+| `notice` | A failure or a change of the session ("Failures"). |
+| `log` | A log line of the agent, with its component and level. |
 
 **Streams.** Both streams are SSE. The field `event` holds the type. The field `data` holds the JSON body. Events have no `id`.
 

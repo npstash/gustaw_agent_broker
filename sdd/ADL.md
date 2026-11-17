@@ -40,3 +40,5 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261117-05 Opus-5.5 ba1ac6c4bd5c A workspace is the root or one folder directly under it; a nested path and a symbolic link give 400
 - 20261117-06 Opus-5.5 ba1ac6c4bd5c An agent can lose a session that has no command yet when the agent restarts; its ID then gives 404
 - 20261117-07 Opus-5.5 ba1ac6c4bd5c The provider opencode sends only the state and the reply replay from the session log, then the live events
+- 20261117-08 Opus-5.5 f15d8f0daf47 Each agent has the configuration keys logging.levels.<component>; the level selects the log events of the component
+- 20261117-09 Opus-5.5 f15d8f0daf47 A command text that starts with / is a slash command of the agent; an unknown slash command gets a reply that says so
