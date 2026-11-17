@@ -1,4 +1,4 @@
-"""Typed objects for the messages of the broker API (DESIGN.md, sections 6.1 and 8.2).
+"""Typed objects for the messages of the broker API (DESIGN.md, sections 6.1.1 and 8.2).
 
 Each ``parse_*`` function checks a JSON body against the schema first. Then it makes the
 typed object. A body that does not agree with the schema raises MessageError.

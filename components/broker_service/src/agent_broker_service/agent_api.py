@@ -1,4 +1,4 @@
-"""The provider ``agent_api``: HTTP to an agent that implements the agent API (DESIGN.md, section 6.2).
+"""The provider ``agent_api``: HTTP to an agent that implements the agent API (DESIGN.md, section 6.1.2).
 
 The URL of the agent is local. The connection has no TLS and no authentication.
 """
@@ -23,7 +23,7 @@ from .provider import AgentProvider, Event, UpstreamStream
 
 log = logs.get("provider")
 
-# The statuses of an agent that pass to the client unchanged (DESIGN.md, section 6.1, "Errors").
+# The statuses of an agent that pass to the client unchanged (DESIGN.md, section 6.1.1, "Errors").
 PASSED_STATUSES = {400: "bad_request", 404: "not_found", 409: "busy"}
 
 
@@ -204,7 +204,7 @@ class AgentApiProvider(AgentProvider):
 
     async def _open(self, path: str) -> SseStream:
         where = f"{self._agent}: GET {path}"
-        # No read timeout: an agent sends no heartbeat (DESIGN.md, section 6.2).
+        # No read timeout: an agent sends no heartbeat (DESIGN.md, section 6.1.2).
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=self.request_timeout)
         try:
             async with asyncio.timeout(self.request_timeout):

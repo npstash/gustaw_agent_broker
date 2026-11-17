@@ -1,8 +1,8 @@
 # broker_service
 
-The broker service: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.1, 6.1, 6.2 and 8.
+The broker service: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.1, 6.1.1, 6.1.2 and 8.
 
-The provider `opencode` (section 6.3) is not implemented yet. The service skips an enabled agent with this provider and writes a WARNING. The default configuration disables the agent `opencode`.
+The provider `opencode` (section 6.2.1) is not implemented yet. The service skips an enabled agent with this provider and writes a WARNING. The default configuration disables the agent `opencode`.
 
 ## Contents
 

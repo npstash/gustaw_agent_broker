@@ -1,4 +1,4 @@
-"""The errors of the parts of the broker service (DESIGN.md, section 6.1, "Errors").
+"""The errors of the parts of the broker service (DESIGN.md, section 6.1.1, "Errors").
 
 The api module makes an error answer from each of these errors.
 """

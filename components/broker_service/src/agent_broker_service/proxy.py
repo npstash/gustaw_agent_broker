@@ -1,4 +1,4 @@
-"""The event proxy (DESIGN.md, sections 5.1 and 6.1, "Streams").
+"""The event proxy (DESIGN.md, sections 5.1 and 6.1.1, "Streams").
 
 - One upstream session stream for each client session stream. The events pass in order,
   with the field ``agent``. The end of one side closes the other side.

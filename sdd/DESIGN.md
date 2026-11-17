@@ -59,7 +59,7 @@ flowchart TD
 
 - **Broker service:** the HTTPS API, the routing to the agents, the event streams and the container control.
 - **Client library:** the broker client and the session client. Each client project uses it from the submodule of this project.
-- **Agent API contract:** `messages.schema.json` (section 8.2) and the operations of section 6.2. An agent that implements it needs no adapter.
+- **Agent API contract:** `messages.schema.json` (section 8.2) and the operations of section 6.1.2. An agent that implements it needs no adapter.
 - **certtool:** makes the key pair of the broker. It writes the key to the vault.
 
 ## 5. Components (C4 level 3)
@@ -88,7 +88,7 @@ flowchart TD
 - **router:** finds the provider of the agent that the URL names.
 - **provider:** the interface to one kind of agent. The configuration gives the provider of each agent.
   - **agent_api:** passes each call to an agent that implements the agent API.
-  - **opencode:** translates each call and each event to and from the OpenCode API (section 6.3).
+  - **opencode:** translates each call and each event to and from the OpenCode API (section 6.2.1).
 - **container control:** starts, stops, restarts and inspects the container of an agent.
 - **event proxy:** opens one upstream stream for each client session stream. It keeps one upstream agent stream for each agent and merges them into the broker stream. It sends the heartbeat.
 - **language:** detects the language of a reply text. Only the `opencode` provider uses it. An agent that implements the agent API detects the language itself.
@@ -100,7 +100,9 @@ flowchart TD
 
 ## 6. Interfaces
 
-### 6.1 Broker API
+### 6.1 Container interfaces
+
+#### 6.1.1 Broker API
 
 HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs HTTP basic authentication with the login of the vault entry `Agent Broker API 01`. All clients use the same login. Section 8.2 gives the schema of each message.
 
@@ -108,7 +110,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 
 | Operation | Description |
 | --- | --- |
-| `GET /agents` | `AgentList`. For each agent: name, provider, container state, agent state, version. The broker asks Docker and the agent at each call. It does not answer from a cache. |
+| `GET /agents` | `AgentList`. For each agent: name, provider, container state, agent state, version. The broker asks Docker and the agent at each call. It does not answer from a cache. A disabled agent is not in the list, and each call for it gives `404`; the broker does not touch its container. An enabled agent with a provider that is not implemented is skipped, with a WARNING in the log. |
 | `POST /agents/{agent}/start` | Starts the container of the agent. `AgentResult`. |
 | `POST /agents/{agent}/stop` | Stops the container. The broker closes each session stream of the agent. `AgentResult`. |
 | `POST /agents/{agent}/restart` | Restarts the container. The broker closes each session stream of the agent. `AgentResult`. |
@@ -116,13 +118,13 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `GET /agents/{agent}/config/{key}` | `ConfigValue`: one value. Dotted key. |
 | `PUT /agents/{agent}/config/{key}` | Body `ConfigSetRequest`. `ConfigSetResult` with `applied`: `now` or `at_restart`. |
 | `GET /events` | Broker stream (SSE) for all agents. See "Streams". |
-| `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. |
+| `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. An agent can lose a session that has no command yet when the agent restarts. Its ID then gives `404`. |
 | `GET /agents/{agent}/sessions?client={client}` | `SessionList`: the sessions of the agent that have this client ID. `client` is required. The broker reads all sessions from the agent and filters them. |
 | `GET /agents/{agent}/sessions/{id}` | `Session` with its current `state`. The broker reads it from the agent at each call. |
 | `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. |
 | `GET /agents/{agent}/sessions/{id}/events` | Session stream (SSE). See "Streams". |
-| `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` if a command runs. |
-| `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. `SessionResult`. |
+| `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` in the state `working`. In the state `stopped`, the agent tries the session again before it runs the command ("Failures"). |
+| `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. The session stream gets `notice` `command_dropped` for it, then `state` `idle`. With no command that runs: no action and no start of resources. Answer `SessionResult` with the current state. |
 | Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable` when the broker cannot reach the agent. |
 
 **Session.** A session is a stored chat of one agent.
@@ -135,10 +137,29 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 **Workspace.** `workspace` is a path relative to the workspace root of the agent.
 
 - `/x`, `./x` and `x` mean the folder `x` under the root. `/` and `.` mean the root.
-- The agent rejects a path that resolves outside the root (`400`).
+- The workspace is the root or one folder directly under it. The agent rejects a nested path, a symbolic link and a path that resolves outside the root (`400`).
 - With `force`, the agent creates a folder that does not exist.
 - `Session` returns `workspace` (the relative form, e.g. `x`) and `workspace_path` (the path that the agent uses).
 - No part translates paths in a chat. The chat uses the paths of the agent.
+
+**Session state.** The field `state` of a session:
+
+| State | Meaning | A new command |
+| --- | --- | --- |
+| `idle` | No command runs. | Runs. |
+| `working` | A command runs. | `409` `busy`. |
+| `stopped` | The agent cannot continue the session after a failure. | The agent tries the session again, then runs the command. |
+
+A stream of a `stopped` session gets `state` `stopped` and starts nothing.
+
+**Failures.** Each agent shows a failure to the clients in the same way:
+
+- A command that ends with an error gives `notice` `command_failed` with its `command_id` and the error text. Then `state` `idle`.
+- A failure of the agent while a command runs gives `notice` `command_failed` for that command. Then the agent tries to continue the session: `state` `idle` if it can, `stopped` if it cannot.
+- A command that ends with no result gives `notice` `command_dropped`: an interrupt, or a command that the agent drops.
+- `notice` `lifecycle` on a session stream tells only about the session: it started, was resumed, has a new chat, or stopped.
+- When the upstream session stream ends in the state `working`, e.g. the container of the agent ends, the broker sends `notice` `command_failed` for the open command. Then it closes the client stream. The client connects again.
+- The broker stream gives the end of a container (`notice` `lifecycle`). While the agent is not reachable, each call for it gives `503` `agent_unavailable`.
 
 **Streams.** Both streams are SSE. The field `event` holds the type. The field `data` holds the JSON body. Events have no `id`.
 
@@ -158,23 +179,24 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 
 **Heartbeat.** The broker writes an SSE comment line on each stream after HEARTBEAT_INTERVAL (15 s) with no data. A client that gets no data for HEARTBEAT_TIMEOUT (45 s) closes the connection and connects again. If a heartbeat write fails, the broker closes the upstream stream of that client.
 
-### 6.2 Agent API
+#### 6.1.2 Agent API
 
-An agent implements this API to work with the provider `agent_api`. HTTP on `127.0.0.1`, with no TLS and no authentication. The messages are the same as in section 6.1.
+An agent implements this API to work with the provider `agent_api`. HTTP on `127.0.0.1`, with no TLS and no authentication. The messages are the same as in section 6.1.1.
 
 | Operation | Description |
 | --- | --- |
 | `GET /status` | `AgentStatus`: uptime, version, number of open sessions. |
-| `GET /config`, `GET /config/{key}`, `PUT /config/{key}` | As in section 6.1. |
+| `GET /config`, `GET /config/{key}`, `PUT /config/{key}` | As in section 6.1.1. |
 | `GET /events` | Agent stream (SSE): `notice` with the kind `lifecycle`, and `log`. |
 | `POST /sessions` | As `POST /agents/{agent}/sessions`. |
 | `GET /sessions` | `SessionList` with all sessions of the agent. No filter. A session that another tool made has the client `null`. |
-| `GET /sessions/{id}`, `DELETE /sessions/{id}` | As in section 6.1. |
-| `GET /sessions/{id}/events` | Session stream, as in section 6.1. |
-| `POST /sessions/{id}/commands`, `POST /sessions/{id}/interrupt` | As in section 6.1. |
+| `GET /sessions/{id}`, `DELETE /sessions/{id}` | As in section 6.1.1. |
+| `GET /sessions/{id}/events` | Session stream, as in section 6.1.1. |
+| `POST /sessions/{id}/commands`, `POST /sessions/{id}/interrupt` | As in section 6.1.1. |
 
 Rules for an agent:
 
+- The agent follows the session states and the failures of section 6.1.1.
 - The agent stores the client ID and the workspace with the session.
 - The session ID does not change during the life of a session. This applies also when the agent starts a new chat inside the session.
 - `DELETE /sessions/{id}` removes the stored chat of the session.
@@ -184,9 +206,43 @@ Rules for an agent:
 - The agent has no operation that restarts it. The broker restarts its container.
 - An open session stream tells the agent that a client uses the session. The agent decides when it opens and closes its resources for the session.
 
-### 6.3 OpenCode provider
+#### 6.1.3 Client library
 
-The provider `opencode` implements the operations of section 6.1 with the OpenCode API (`/api/...`, HTTP basic authentication, username `opencode`, password from the vault entry `OpenCode API token`).
+| Part | Interface |
+| --- | --- |
+| Broker client | Made with the broker URL, the login and a client ID. Lists the agents. Starts, stops and restarts an agent. Reads and sets the configuration of an agent. Gives the events of the broker stream. Lists the sessions of its client ID. Creates a session (workspace, `force`) and returns a session client. Returns a session client for a known session ID. Deletes a session. |
+| Session client | Sends a command. Sends an interrupt. Gives the events of the session stream. Closes. |
+
+- A session client holds one session stream. It connects again after a heartbeat timeout or a closed stream, until it is closed.
+- The session client and the broker client wait RECONNECT_INTERVAL (5 s) between two tries to connect.
+- To change the session, a program makes a new session client. It closes the old one when the old one expects no more events, or after a timeout of the program.
+- A broker client holds one broker stream, with the same reconnect rule.
+- Each stream holds a maximum of STREAM_QUEUE_LIMIT (100) events that the program did not read. At this limit, the library treats the link as broken and drops the connection. It keeps the waiting events.
+- After a drop for the limit, the library connects again by the reconnect rule. It connects only after the program has read the waiting events.
+- The library waits AGENT_CONTROL_TIMEOUT (60 s) for the answer to start, stop and restart of an agent. Each other request keeps its timeout.
+
+#### 6.1.4 Command line
+
+| Operation | Description |
+| --- | --- |
+| `run.sh cert` | Makes a new key pair with the names of CERT_NAMES. Writes the certificate to `tls/server.crt` and the key to the vault. |
+| `run.sh test` | Installs the test dependencies in a venv and runs the tests. |
+| `update.sh [--dry-run]` | Host: pulls the current branch, builds the image and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. |
+
+### 6.2 Component interfaces
+
+| Component | Interface | Used by |
+| --- | --- | --- |
+| api | The routes of section 6.1.1, the check of each message | clients |
+| router | The provider and the container of an agent name | api |
+| provider | Each operation of section 6.1.1 for one kind of agent: `agent_api` passes it to the agent API (section 6.1.2), `opencode` translates it (section 6.2.1) | router, event proxy |
+| container control | Start, stop, restart and inspect a container | router, event proxy |
+| event proxy | The upstream streams, the client streams, the broker stream | api |
+| language | The language of a reply text | provider `opencode` |
+
+#### 6.2.1 Provider `opencode`
+
+The provider `opencode` implements the operations of section 6.1.1 with the OpenCode API (`/api/...`, HTTP basic authentication, username `opencode`, password from the vault entry `OpenCode API token`).
 
 | Broker operation | OpenCode |
 | --- | --- |
@@ -207,33 +263,11 @@ The provider `opencode` implements the operations of section 6.1 with the OpenCo
 | `session.execution.interrupted` | `notice` `command_dropped`; then `state` `idle` |
 | `session.text.*`, `session.tool.*`, `session.step.*`, `session.retry.scheduled` | `status` |
 
-- The provider keeps no state. It builds the reply replay from the session log of OpenCode.
+- The provider keeps no state. From the session log of OpenCode, it sends only the `state` and the reply replay of section 6.1.1, then the live events.
+- The provider follows the session states and the failures of section 6.1.1. **MISSING:** how it finds that OpenCode cannot continue a session (`stopped`).
 - The workspace root of OpenCode is the working directory of its container. The provider reads it from Docker at the start of the broker.
 - The provider checks the path of a workspace and creates a folder for `force` inside the container, through Docker.
 - The language detection uses the languages of LANGUAGES (`en`, `pl`). Below LANGUAGE_THRESHOLD (0.70), the language of the session does not change.
-
-### 6.4 Client library
-
-| Part | Interface |
-| --- | --- |
-| Broker client | Made with the broker URL, the login and a client ID. Lists the agents. Starts, stops and restarts an agent. Reads and sets the configuration of an agent. Gives the events of the broker stream. Lists the sessions of its client ID. Creates a session (workspace, `force`) and returns a session client. Returns a session client for a known session ID. Deletes a session. |
-| Session client | Sends a command. Sends an interrupt. Gives the events of the session stream. Closes. |
-
-- A session client holds one session stream. It connects again after a heartbeat timeout or a closed stream, until it is closed.
-- The session client and the broker client wait RECONNECT_INTERVAL (5 s) between two tries to connect.
-- To change the session, a program makes a new session client. It closes the old one when the old one expects no more events, or after a timeout of the program.
-- A broker client holds one broker stream, with the same reconnect rule.
-- Each stream holds a maximum of STREAM_QUEUE_LIMIT (100) events that the program did not read. At this limit, the library treats the link as broken and drops the connection. It keeps the waiting events.
-- After a drop for the limit, the library connects again by the reconnect rule. It connects only after the program has read the waiting events.
-- The library waits AGENT_CONTROL_TIMEOUT (60 s) for the answer to start, stop and restart of an agent. Each other request keeps its timeout.
-
-### 6.5 Command line
-
-| Operation | Description |
-| --- | --- |
-| `run.sh cert` | Makes a new key pair with the names of CERT_NAMES. Writes the certificate to `tls/server.crt` and the key to the vault. |
-| `run.sh test` | Installs the test dependencies in a venv and runs the tests. |
-| `update.sh [--dry-run]` | Host: pulls the current branch, builds the image and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. |
 
 ## 7. Key flows
 
@@ -334,8 +368,6 @@ The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CO
 
 The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`.local_assets/config/local.yaml`) can change each value of these agents, also `enabled`. It cannot add another agent.
 
-- A disabled agent is not served. It is not in `GET /agents`, and each call for it gives `404`. The broker does not touch its container.
-- An enabled agent whose provider is not implemented is skipped with a WARNING.
 
 Default agents:
 

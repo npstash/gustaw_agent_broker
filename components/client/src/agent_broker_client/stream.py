@@ -1,4 +1,4 @@
-"""A stream of the broker that connects again (DESIGN.md, sections 6.1 and 6.4).
+"""A stream of the broker that connects again (DESIGN.md, sections 6.1.1 and 6.1.3).
 
 A background task reads the stream and puts each typed event into a queue. The caller
 reads the queue with ``items()``. Each received byte counts as data, also a comment line.
@@ -7,7 +7,7 @@ failed stream, the task waits RECONNECT_INTERVAL and connects again, until ``clo
 The task does not connect again after a ``404`` of a session stream, a ``401`` or a TLS
 verification failure. Then ``items()`` raises the error.
 
-The queue holds STREAM_QUEUE_LIMIT events that the caller did not read (DESIGN.md, section 6.4).
+The queue holds STREAM_QUEUE_LIMIT events that the caller did not read (DESIGN.md, section 6.1.3).
 At this limit, the task drops the connection. It keeps the events in the queue, and also the
 other events of the last received data. It connects again by the reconnect rule only after
 the caller has read each event in the queue. It drops no event that it received.

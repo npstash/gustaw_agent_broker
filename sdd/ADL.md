@@ -33,3 +33,10 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261115-01 Nestor 40d86ef1d4e4 The broker container uses the host network
 - 20261115-02 Nestor 73761e8f9317 The session ID does not change during the life of a session, also when the agent starts a new chat inside it
 - 20261115-03 Nestor 73761e8f9317 The reconnect interval is a value of the client library; the session client and the broker client wait it between two tries
+- 20261117-01 Nestor ba1ac6c4bd5c The broker API defines the failure behaviour for all agents: command_failed for the command, then state idle or stopped; in stopped a new command tries the session again; the broker sends command_failed when an upstream session stream ends in the state working
+- 20261117-02 Opus-5.5 ba1ac6c4bd5c A new command gets 409 busy only in the state working
+- 20261117-03 Opus-5.5 ba1ac6c4bd5c An interrupt gives command_dropped and then state idle; with no running command it does nothing and answers the current state
+- 20261117-04 Opus-5.5 ba1ac6c4bd5c A lifecycle notice on a session stream tells only about the session; command_dropped is a command that ended with no result
+- 20261117-05 Opus-5.5 ba1ac6c4bd5c A workspace is the root or one folder directly under it; a nested path and a symbolic link give 400
+- 20261117-06 Opus-5.5 ba1ac6c4bd5c An agent can lose a session that has no command yet when the agent restarts; its ID then gives 404
+- 20261117-07 Opus-5.5 ba1ac6c4bd5c The provider opencode sends only the state and the reply replay from the session log, then the live events

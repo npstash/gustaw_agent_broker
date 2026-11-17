@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launcher of the component client.
 #   run.sh test [pytest args]   install the dev requirements and run the checks and the tests
-#   run.sh cert [args]          make a new key pair for the broker (DESIGN.md, section 6.5)
+#   run.sh cert [args]          make a new key pair for the broker (DESIGN.md, section 6.1.4)
 set -euo pipefail
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$dir"

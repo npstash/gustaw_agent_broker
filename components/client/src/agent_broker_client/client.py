@@ -1,4 +1,4 @@
-"""The broker client and the session client over HTTPS (DESIGN.md, sections 6.1 and 6.4).
+"""The broker client and the session client over HTTPS (DESIGN.md, sections 6.1.1 and 6.1.3).
 
 The library does not read a vault. The caller gives the login.
 """

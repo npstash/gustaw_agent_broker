@@ -1,4 +1,4 @@
-"""The interface of the client library (DESIGN.md, sections 5.2 and 6.4).
+"""The interface of the client library (DESIGN.md, sections 5.2 and 6.1.3).
 
 ``client.py`` has the implementation. A program makes an ``HttpBrokerClient`` and uses the
 types of this module.

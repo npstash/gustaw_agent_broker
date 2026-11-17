@@ -24,7 +24,7 @@ EVENT_SCHEMAS = {
     "notice": "NoticeEvent",
     "log": "LogEvent",
 }
-# The events of the agent API (from an agent to the broker). The field ``agent`` is optional (DESIGN.md, section 6.2).
+# The events of the agent API (from an agent to the broker). The field ``agent`` is optional (DESIGN.md, section 6.1.2).
 AGENT_EVENT_SCHEMAS = {event: "AgentApi" + name for event, name in EVENT_SCHEMAS.items()}
 
 

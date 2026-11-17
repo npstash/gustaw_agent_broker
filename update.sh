@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update the Agent Broker on the host (DESIGN.md, sections 6.5 and 9). Run it in the clone of the project.
+# Update the Agent Broker on the host (DESIGN.md, sections 6.1.4 and 9). Run it in the clone of the project.
 #   update.sh              pull the current branch, build the image from the committed code, run the container
 #   update.sh --dry-run    print the steps; run no git command and no Docker command that changes something
 # The script works on the repository that it is in. It does not switch the branch.

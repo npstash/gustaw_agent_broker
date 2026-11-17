@@ -1,4 +1,4 @@
-"""The streams to the clients (DESIGN.md, section 6.1, "Streams" and "Heartbeat").
+"""The streams to the clients (DESIGN.md, section 6.1.1, "Streams" and "Heartbeat").
 
 Each client stream has a send queue of STREAM_QUEUE_LIMIT events. A writer task writes the
 events in order. After HEARTBEAT_INTERVAL with no data, it writes a comment line. When an

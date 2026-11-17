@@ -203,7 +203,7 @@ def test_events_map_to_messages() -> None:
 
 
 def test_agent_events_need_no_agent_and_broker_events_need_it() -> None:
-    """DESIGN.md, sections 6.2 and 8.2: an agent does not send agent; the broker adds it."""
+    """DESIGN.md, sections 6.1.2 and 8.2: an agent does not send agent; the broker adds it."""
     upstream: JsonObject = {"session": "ses_1", "state": "idle"}
     assert messages.validate_agent_event("state", upstream) == upstream
     with pytest.raises(messages.MessageError):

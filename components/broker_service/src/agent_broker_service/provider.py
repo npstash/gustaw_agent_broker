@@ -1,4 +1,4 @@
-"""The provider interface: the access to one kind of agent (DESIGN.md, sections 5.1, 6.1, 6.2 and 6.3).
+"""The provider interface: the access to one kind of agent (DESIGN.md, sections 5.1, 6.1.1, 6.1.2 and 6.2.1).
 
 The configuration gives the provider of each agent. Each method gives checked JSON
 messages of the schema. The events are events of the agent API: the field ``agent``

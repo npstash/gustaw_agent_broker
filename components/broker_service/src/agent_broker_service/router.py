@@ -21,7 +21,7 @@ def _agent_api(agent: AgentSettings, settings: Settings) -> AgentProvider:
     return AgentApiProvider(agent.name, agent.url, settings.agent_request_timeout)
 
 
-# The implemented providers. The provider opencode (DESIGN.md, section 6.3) is not implemented yet.
+# The implemented providers. The provider opencode (DESIGN.md, section 6.2.1) is not implemented yet.
 FACTORIES: dict[Provider, ProviderFactory] = {Provider.AGENT_API: _agent_api}
 
 

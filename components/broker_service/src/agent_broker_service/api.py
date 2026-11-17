@@ -1,4 +1,4 @@
-"""The HTTPS API of the broker (DESIGN.md, section 6.1).
+"""The HTTPS API of the broker (DESIGN.md, section 6.1.1).
 
 Each request needs HTTP basic authentication. The broker checks each request body and
 each answer against the schema. An error gives an ``ErrorResponse``.

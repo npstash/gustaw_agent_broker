@@ -1,6 +1,6 @@
 # client
 
-The client library, the message schema and the certificate tool: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.2, 6.4, 6.5 and 8.2.
+The client library, the message schema and the certificate tool: a component of the project [Agent Broker](../../README.md). For the design, see [DESIGN.md](../../sdd/DESIGN.md), sections 5.2, 6.1.3, 6.1.4 and 8.2.
 
 A client project installs this component with pip. The package is `agent_broker_client`.
 

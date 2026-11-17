@@ -1,4 +1,4 @@
-# Configuration of certtool: a new key pair for the broker (DESIGN.md, sections 6.5, 8.3 and 8.4).
+# Configuration of certtool: a new key pair for the broker (DESIGN.md, sections 6.1.4, 8.3 and 8.4).
 # Relative paths start at the folder of the component client.
 cert:
   file: tls/server.crt
