@@ -48,8 +48,7 @@ def _decode(raw: bytes) -> JsonValue:
 def _error_body(status: int, answer: JsonValue, raw: bytes) -> JsonObject:
     """The ``ErrorResponse`` of an error answer of the agent.
 
-    An answer that is no ErrorResponse gets the error value of its status. Choice of the
-    service: the DESIGN does not say what to do with such an answer.
+    An answer that is no ErrorResponse gets the error value of its status (DESIGN.md, section 6.1.1, "Errors").
     """
     if isinstance(answer, dict):
         try:
@@ -87,7 +86,7 @@ class SseStream(UpstreamStream):
                     try:
                         body = messages.validate_agent_event(event, models.decode_json(data))
                     except MessageError as exc:
-                        # Choice of the service: the broker does not pass an event that breaks the contract.
+                        # The broker does not pass an event that breaks the contract (DESIGN.md, section 6.1.1, "Streams").
                         # The summary: the text of the error can hold content of the event.
                         log.warning("%s: an event of the agent is not correct; it is not passed: %s",
                                     self.label, exc.summary)
@@ -156,7 +155,7 @@ class AgentApiProvider(AgentProvider):
     def _session_body(self, answer: JsonValue, where: str) -> JsonObject:
         """A ``Session`` of the agent with the name of the agent in the configuration.
 
-        Choice of the service: the agent does not know its name in the broker. The broker writes ``agent``.
+        The agent does not know its name in the broker. The broker writes ``agent`` (DESIGN.md, section 6.1.1, "Session").
         """
         if not isinstance(answer, dict):
             raise AgentUnavailableError(f"{where}: the session is not an object")

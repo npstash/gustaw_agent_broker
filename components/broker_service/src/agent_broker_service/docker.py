@@ -29,7 +29,7 @@ BASE_URL = "http://docker"
 # the broker gives one event for each end and does not remember which stops it started itself.
 LIFECYCLE_ACTIONS = ("start", "restart", "die")
 
-# The Docker states that are not in ContainerState. Choice of the service: the DESIGN does not map them.
+# The Docker states that are not in ContainerState (DESIGN.md, section 8.2).
 # "removing": the container does not run and goes away soon.
 _OTHER_STATES = {"removing": ContainerState.EXITED}
 

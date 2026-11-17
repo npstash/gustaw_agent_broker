@@ -110,7 +110,7 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 
 | Operation | Description |
 | --- | --- |
-| `GET /agents` | `AgentList`. For each agent: name, provider, container state, agent state, version. The broker asks Docker and the agent at each call. It does not answer from a cache. A disabled agent is not in the list, and each call for it gives `404`; the broker does not touch its container. An enabled agent with a provider that is not implemented is skipped, with a WARNING in the log. |
+| `GET /agents` | `AgentList`. For each agent: name, provider, container state, agent state, version. The broker asks Docker and the agent at each call. It does not answer from a cache. A disabled agent is not in the list, and each call for it gives `404`; the broker does not touch its container. An enabled agent with a provider that is not implemented is skipped, with a WARNING in the log. An agent that the broker cannot reach has the version `""`. |
 | `POST /agents/{agent}/start` | Starts the container of the agent. `AgentResult`. |
 | `POST /agents/{agent}/stop` | Stops the container. The broker closes each session stream of the agent. `AgentResult`. |
 | `POST /agents/{agent}/restart` | Restarts the container. The broker closes each session stream of the agent. `AgentResult`. |
@@ -121,16 +121,17 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. An agent can lose a session that has no command yet when the agent restarts. Its ID then gives `404`. |
 | `GET /agents/{agent}/sessions?client={client}` | `SessionList`: the sessions of the agent that have this client ID. `client` is required. The broker reads all sessions from the agent and filters them. |
 | `GET /agents/{agent}/sessions/{id}` | `Session` with its current `state`. The broker reads it from the agent at each call. |
-| `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. |
+| `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. Answer `204` with no body. |
 | `GET /agents/{agent}/sessions/{id}/events` | Session stream (SSE). See "Streams". |
 | `POST /agents/{agent}/sessions/{id}/commands` | Body `CommandRequest`. Starts a command. A text that starts with `/` is a slash command of the agent. The agent replies to a slash command that it does not know with a text that says so. Answer `202` `CommandAccepted`: `accepted`, or `duplicate` for the ID of the last command of the session (runs nothing). `409` `busy` in the state `working`. In the state `stopped`, the agent tries the session again before it runs the command ("Failures"). |
 | `POST /agents/{agent}/sessions/{id}/interrupt` | Stops the command that runs. The session stream gets `notice` `command_dropped` for it, then `state` `idle`. With no command that runs: no action and no start of resources. Answer `SessionResult` with the current state. |
-| Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable`. `503` `agent_unavailable` comes when the broker cannot reach the agent or the Docker engine, and when the broker stops. `404` also comes when the container of an agent does not exist. |
+| Errors | `ErrorResponse` with `400`, `401`, `404`, `409`, or `503` `agent_unavailable`. `503` `agent_unavailable` comes when the broker cannot reach the agent or the Docker engine, and when the broker stops. `404` also comes when the container of an agent does not exist. An error answer of an agent that is not an `ErrorResponse` gets the error value of its status. The broker waits AGENT_REQUEST_TIMEOUT (10 s) for an agent and DOCKER_CONTROL_TIMEOUT (55 s) for start, stop and restart; then `503`. |
 
 **Session.** A session is a stored chat of one agent.
 
 - A session is bound to one workspace folder for its whole life.
 - A session carries the client ID that created it. The agent stores it. The broker stores nothing.
+- The field `agent` of a session is the name of the agent in the configuration of the broker. The broker writes it.
 - Any client can use any session ID. The client ID is not a security measure.
 - A client stores the ID of each session that it uses.
 
@@ -186,6 +187,7 @@ A stream of a `stopped` session gets `state` `stopped` and starts nothing.
 - When the broker loses the upstream stream of a session, it closes the client stream. The client connects again.
 - Each client stream has a send queue of STREAM_QUEUE_LIMIT (100) events. When an event comes and the queue is full, the broker treats the link as broken. It closes the client stream and its upstream stream.
 - The broker drops no event silently. It writes the number of lost events of a closed stream to its log.
+- The broker does not pass an event of an agent that does not agree with the schema. It writes a WARNING to its log.
 
 **Heartbeat.** The broker writes an SSE comment line on each stream after HEARTBEAT_INTERVAL (15 s) with no data. A client that gets no data for HEARTBEAT_TIMEOUT (45 s) closes the connection and connects again. If a heartbeat write fails, the broker closes the upstream stream of that client.
 
@@ -229,7 +231,7 @@ Rules for an agent:
 - A broker client holds one broker stream, with the same reconnect rule.
 - Each stream holds a maximum of STREAM_QUEUE_LIMIT (100) events that the program did not read. At this limit, the library treats the link as broken and drops the connection. It keeps the waiting events.
 - After a drop for the limit, the library connects again by the reconnect rule. It connects only after the program has read the waiting events.
-- The library waits AGENT_CONTROL_TIMEOUT (60 s) for the answer to start, stop and restart of an agent. Each other request keeps its timeout.
+- The library waits AGENT_CONTROL_TIMEOUT (60 s) for the answer to start, stop and restart of an agent. Each other request waits REQUEST_TIMEOUT (15 s).
 
 #### 6.1.4 Command line
 
@@ -349,7 +351,7 @@ Changes against the schema of voice client:
 | `CommandRequest`, `CommandAccepted`, `Config*`, `SessionResult`, `SessionState`, `Language` | No change. |
 
 - `created_at` and `last_modified` are ISO 8601 date-time strings in UTC (`format: date-time`).
-- `container_state` is a Docker state: `running`, `exited`, `restarting`, `paused`, `created` or `dead`. It is `missing` when no container exists.
+- `container_state` is a Docker state: `running`, `exited`, `restarting`, `paused`, `created` or `dead`. It is `missing` when no container exists. The Docker state `removing` is `exited`.
 - `agent_state` is `ok` or `unreachable`.
 - The events have two definitions. An agent sends the events of the agent API (`AgentApi...Event`). The broker adds `agent` and sends the events of the broker API (`StateEvent` etc.). Each event of the broker API refers to its event of the agent API and requires `agent`.
 
@@ -445,6 +447,9 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | BROKER_PORT | 38443 | — | `server.port` | Port of the broker |
 | LOG_LEVEL | `INFO` | — | `log.level` | Lowest level of the log lines of the broker: `ERROR`, `WARNING`, `INFO` or `DEBUG` |
 | HEARTBEAT_INTERVAL | 15 | s | `streams.heartbeat_interval_s` | Idle time before a heartbeat line |
+| AGENT_REQUEST_TIMEOUT | 10 | s | — | Wait for an answer of an agent |
+| DOCKER_CONTROL_TIMEOUT | 55 | s | — | Wait for start, stop and restart of a container |
+| REQUEST_TIMEOUT | 15 | s | — | Wait of the client library for an answer of the broker, except start, stop and restart |
 | HEARTBEAT_TIMEOUT | 45 | s | `streams.heartbeat_timeout_s` | Time with no data after which a client connects again |
 | REPLY_REPLAY | 600 | s | agent configuration | Maximum age of a reply that a new stream gets again |
 | RECONNECT_INTERVAL | 5 | s | — (value of the client library) | Wait of the session client and the broker client between two tries to connect |

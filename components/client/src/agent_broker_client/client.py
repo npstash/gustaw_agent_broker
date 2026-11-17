@@ -26,7 +26,7 @@ from .tls import DEFAULT_CERT_FILE, client_context
 
 HEARTBEAT_TIMEOUT_S = 45.0     # HEARTBEAT_TIMEOUT (DESIGN.md, section 12)
 RECONNECT_INTERVAL_S = 5.0     # RECONNECT_INTERVAL
-# The DESIGN gives no limit for a request. Choice of the library: 15 s.
+# REQUEST_TIMEOUT (DESIGN.md, section 12).
 REQUEST_TIMEOUT_S = 15.0
 AGENT_CONTROL_TIMEOUT_S = 60.0   # AGENT_CONTROL_TIMEOUT: start, stop and restart of an agent
 
@@ -182,7 +182,7 @@ class HttpBrokerClient(BrokerClient):
         request: JsonObject = {"client": self._client_id, "workspace": workspace, "force": force}
         body = messages.validate("SessionCreateRequest", request)
         created = await self.call("POST", f"/agents/{_part(agent)}/sessions", models.parse_session, body)
-        # The DESIGN does not say if Session.agent can differ from the name in the URL. The client uses the URL name.
+        # Session.agent is the name of the agent in the broker (DESIGN.md, section 6.1.1, "Session").
         return self.session(agent, created.id, on_connection=on_connection, created=created)
 
     def session(self, agent: str, session_id: str, *, on_connection: ConnectionListener | None = None,
@@ -197,7 +197,7 @@ class HttpBrokerClient(BrokerClient):
         return await self.call("GET", f"/agents/{_part(agent)}/sessions/{_part(session_id)}", models.parse_session)
 
     async def delete_session(self, agent: str, session_id: str) -> None:
-        # The DESIGN gives no body for the answer. The client accepts each 2xx answer and ignores the body.
+        # The answer is 204 with no body (DESIGN.md, section 6.1.1). The client accepts each 2xx answer.
         await self.call("DELETE", f"/agents/{_part(agent)}/sessions/{_part(session_id)}", lambda answer: None)
 
     async def close(self) -> None:

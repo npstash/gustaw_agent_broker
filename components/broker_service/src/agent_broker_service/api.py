@@ -159,7 +159,7 @@ class Api:
             "provider": entry.provider_name.value,
             "container_state": container.state.value,
             "agent_state": (AgentState.OK if agent_status is not None else AgentState.UNREACHABLE).value,
-            # Choice of the service: an agent that cannot be reached has the version "".
+            # An agent that cannot be reached has the version "" (DESIGN.md, section 6.1.1).
             "version": version if isinstance(version, str) else "",
         }
 
@@ -233,7 +233,7 @@ class Api:
     async def delete_session(self, request: web.Request) -> web.Response:
         entry = self._entry(request)
         await entry.provider.delete_session(request.match_info["id"])
-        # Choice of the service: the DESIGN gives no body for the answer. The answer is 204 with no body.
+        # The answer is 204 with no body (DESIGN.md, section 6.1.1).
         return web.Response(status=204)
 
     async def command(self, request: web.Request) -> web.Response:
