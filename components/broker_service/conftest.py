@@ -1,4 +1,4 @@
-"""Keep the temporary folders of pytest in the project (rule nothing-outside-repo).
+"""Keep the temporary folders of pytest in the project.
 
 pytest makes --basetemp without its parent folder. .local_assets/ is gitignored, so a
 new clone has no such folder. Make the parent folder before the first test.

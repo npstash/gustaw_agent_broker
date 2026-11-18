@@ -1,4 +1,4 @@
-"""Make a new key pair for the broker (DESIGN.md, sections 6.1.4, 8.3 and 8.4).
+"""Make a new key pair for the broker.
 
 Write the certificate to the file that config/config.yaml names (tls/server.crt).
 Write the private key directly to the vault. Never show the key.

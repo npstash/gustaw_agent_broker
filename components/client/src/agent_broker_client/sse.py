@@ -1,4 +1,4 @@
-"""Server-Sent Events (DESIGN.md, section 6.1.1, "Streams").
+"""Server-Sent Events.
 
 The field ``event`` holds the type. The field ``data`` holds the JSON body. Events have no ``id``.
 A line that starts with ``:`` is a comment, e.g. the heartbeat. The decoder gives the raw data

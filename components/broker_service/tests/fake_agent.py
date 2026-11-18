@@ -1,4 +1,4 @@
-"""A fake agent for the tests of the broker: the agent API of DESIGN.md, section 6.1.2.
+"""A fake agent for the tests of the broker: the agent API.
 
 It runs on 127.0.0.1 with HTTP, no TLS and no authentication. It implements only what the
 tests need. The tests control its sessions, its events, its errors and the end of its streams.
@@ -23,7 +23,7 @@ CLOSE = b""   # an item of a stream queue: close the stream
 
 
 def workspace_of(path: str) -> str | None:
-    """The relative form of a workspace path (DESIGN.md, section 6.1.1, "Workspace"). None for a path outside the root."""
+    """The relative form of a workspace path. None for a path outside the root."""
     parts: list[str] = []
     for part in path.split("/"):
         if part in ("", "."):
@@ -242,7 +242,7 @@ class FakeAgent:
 
     async def _stream(self, request: web.Request, queues: list[asyncio.Queue[bytes]],
                       first: bytes | None) -> web.StreamResponse:
-        """Write the items of a queue. No heartbeat: an agent sends none (DESIGN.md, section 6.1.2)."""
+        """Write the items of a queue. No heartbeat: an agent sends none."""
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
         await response.prepare(request)
         queue: asyncio.Queue[bytes] = asyncio.Queue()

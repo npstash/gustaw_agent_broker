@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The repositories that the tests of the item need: tests/repositories.txt (rule tests-and-ci).
+      # The repositories that the tests of the item need: tests/repositories.txt.
       # A submodule of .gitmodules, else a clone at the first path of its section in dependencies.txt.
       - name: Check out the repositories of the tests
         env:

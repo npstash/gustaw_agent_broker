@@ -1,4 +1,4 @@
-"""Container control: direct HTTP calls on the Docker socket (DESIGN.md, sections 5.1 and 6.1.1).
+"""Container control: direct HTTP calls on the Docker socket.
 
 The module uses the Docker Engine API with no version prefix in the path. The engine then
 uses its newest API version. Only these calls are necessary: inspect, start, stop, restart
@@ -24,12 +24,12 @@ log = logs.get("docker")
 
 # The host name in the URL. A Unix socket ignores it.
 BASE_URL = "http://docker"
-# The Docker events that the broker passes as lifecycle events (DESIGN.md, section 6.1.1, "Streams").
+# The Docker events that the broker passes as lifecycle events.
 # Docker sends "die" for each end of a container, for a stop and for a crash. The event "stop" is not used:
 # the broker gives one event for each end and does not remember which stops it started itself.
 LIFECYCLE_ACTIONS = ("start", "restart", "die")
 
-# The Docker states that are not in ContainerState (DESIGN.md, section 8.2).
+# The Docker states that are not in ContainerState.
 # "removing": the container does not run and goes away soon.
 _OTHER_STATES = {"removing": ContainerState.EXITED}
 

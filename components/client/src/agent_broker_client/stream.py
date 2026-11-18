@@ -1,4 +1,4 @@
-"""A stream of the broker that connects again (DESIGN.md, sections 6.1.1 and 6.1.3).
+"""A stream of the broker that connects again.
 
 A background task reads the stream and puts each typed event into a queue. The caller
 reads the queue with ``items()``. Each received byte counts as data, also a comment line.
@@ -7,7 +7,7 @@ failed stream, the task waits RECONNECT_INTERVAL and connects again, until ``clo
 The task does not connect again after a ``404`` of a session stream, a ``401`` or a TLS
 verification failure. Then ``items()`` raises the error.
 
-The queue holds STREAM_QUEUE_LIMIT events that the caller did not read (DESIGN.md, section 6.1.3).
+The queue holds STREAM_QUEUE_LIMIT events that the caller did not read.
 At this limit, the task drops the connection. It keeps the events in the queue, and also the
 other events of the last received data. It connects again by the reconnect rule only after
 the caller has read each event in the queue. It drops no event that it received.
@@ -33,7 +33,7 @@ from .models import InvalidEvent, parse_error
 
 log = logging.getLogger("agent_broker.client")
 
-# STREAM_QUEUE_LIMIT (DESIGN.md, section 12): the number of events that the caller did not read, at which
+# STREAM_QUEUE_LIMIT: the number of events that the caller did not read, at which
 # the stream drops the connection.
 STREAM_QUEUE_LIMIT = 100
 

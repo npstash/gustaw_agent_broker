@@ -1,4 +1,4 @@
-# Image of the broker service (DESIGN.md, section 9).
+# Image of the broker service.
 # The build context is .local_assets/build/ of the project: update.sh fills it with git archive
 # of this project and of maya/tools/auth, in the layout of a workspace. The layout keeps the
 # relative paths of dependencies.txt valid: ../../../maya and ../../../vaults/vault-agent_broker.

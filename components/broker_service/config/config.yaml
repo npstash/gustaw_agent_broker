@@ -1,4 +1,4 @@
-# Default configuration of the broker service (DESIGN.md, sections 8.3 and 12).
+# Default configuration of the broker service.
 # It holds no secrets. Relative paths start at the folder of the component broker_service.
 server:
   host: 0.0.0.0              # BROKER_HOST

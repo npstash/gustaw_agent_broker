@@ -7,7 +7,7 @@ from pathlib import Path
 
 COMMIT_SUBJECT_MAX = 80
 # A Docker image has no git data. The build gives the commit in these environment variables.
-# The names are a choice of this module: the DESIGN does not give them.
+# The names of the version fields.
 ENV_COMMIT = "AGENT_BROKER_COMMIT"
 ENV_DATE = "AGENT_BROKER_COMMIT_DATE"
 ENV_SUBJECT = "AGENT_BROKER_COMMIT_SUBJECT"

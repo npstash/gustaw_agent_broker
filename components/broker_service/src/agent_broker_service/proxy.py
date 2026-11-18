@@ -1,4 +1,4 @@
-"""The event proxy (DESIGN.md, sections 5.1 and 6.1.1, "Streams").
+"""The event proxy.
 
 - One upstream session stream for each client session stream. The events pass in order,
   with the field ``agent``. The end of one side closes the other side.
@@ -51,7 +51,7 @@ UPSTREAM_ENDED = "The stream of the agent ended while the command ran."
 
 
 def command_failed(agent: str, session_id: str, command_id: str | None) -> JsonObject:
-    """The notice for an open command when the upstream session stream ends (DESIGN.md, section 6.1.1, "Failures")."""
+    """The notice for an open command when the upstream session stream ends."""
     return {"agent": agent, "session": session_id, "kind": "command_failed", "command_id": command_id,
             "text": UPSTREAM_ENDED}
 

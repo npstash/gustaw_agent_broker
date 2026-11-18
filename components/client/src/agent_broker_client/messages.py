@@ -1,4 +1,4 @@
-"""The messages between a client, the broker and an agent (DESIGN.md, section 8.2).
+"""The messages between a client, the broker and an agent.
 
 The file messages.schema.json is the contract. It is package data. No project keeps a copy.
 A message that does not agree with its schema is an error.
@@ -24,7 +24,7 @@ EVENT_SCHEMAS = {
     "notice": "NoticeEvent",
     "log": "LogEvent",
 }
-# The events of the agent API (from an agent to the broker). The field ``agent`` is optional (DESIGN.md, section 6.1.2).
+# The events of the agent API (from an agent to the broker). The field ``agent`` is optional.
 AGENT_EVENT_SCHEMAS = {event: "AgentApi" + name for event, name in EVENT_SCHEMAS.items()}
 
 

@@ -1,4 +1,4 @@
-"""The skeleton of the service: the package imports and the default configuration has the keys of DESIGN.md."""
+"""The skeleton of the service: the package imports and the default configuration has all keys."""
 from pathlib import Path
 
 import agent_broker_service

@@ -1,4 +1,4 @@
-"""The broker client and the session client over HTTPS (DESIGN.md, sections 6.1.1 and 6.1.3).
+"""The broker client and the session client over HTTPS.
 
 The library does not read a vault. The caller gives the login.
 """
@@ -24,9 +24,9 @@ from .models import (AgentInfo, AgentResult, BrokerEvent, CommandAccepted, Comma
 from .stream import ConnectionListener, ConnectionState, EventStream
 from .tls import DEFAULT_CERT_FILE, client_context
 
-HEARTBEAT_TIMEOUT_S = 45.0     # HEARTBEAT_TIMEOUT (DESIGN.md, section 12)
+HEARTBEAT_TIMEOUT_S = 45.0     # HEARTBEAT_TIMEOUT
 RECONNECT_INTERVAL_S = 5.0     # RECONNECT_INTERVAL
-# REQUEST_TIMEOUT (DESIGN.md, section 12).
+# REQUEST_TIMEOUT.
 REQUEST_TIMEOUT_S = 15.0
 AGENT_CONTROL_TIMEOUT_S = 60.0   # AGENT_CONTROL_TIMEOUT: start, stop and restart of an agent
 
@@ -182,7 +182,7 @@ class HttpBrokerClient(BrokerClient):
         request: JsonObject = {"client": self._client_id, "workspace": workspace, "force": force}
         body = messages.validate("SessionCreateRequest", request)
         created = await self.call("POST", f"/agents/{_part(agent)}/sessions", models.parse_session, body)
-        # Session.agent is the name of the agent in the broker (DESIGN.md, section 6.1.1, "Session").
+        # Session.agent is the name of the agent in the broker.
         return self.session(agent, created.id, on_connection=on_connection, created=created)
 
     def session(self, agent: str, session_id: str, *, on_connection: ConnectionListener | None = None,
@@ -197,7 +197,7 @@ class HttpBrokerClient(BrokerClient):
         return await self.call("GET", f"/agents/{_part(agent)}/sessions/{_part(session_id)}", models.parse_session)
 
     async def delete_session(self, agent: str, session_id: str) -> None:
-        # The answer is 204 with no body (DESIGN.md, section 6.1.1). The client accepts each 2xx answer.
+        # The answer is 204 with no body. The client accepts each 2xx answer.
         await self.call("DELETE", f"/agents/{_part(agent)}/sessions/{_part(session_id)}", lambda answer: None)
 
     async def close(self) -> None:

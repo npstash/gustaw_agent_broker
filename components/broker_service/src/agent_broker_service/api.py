@@ -1,4 +1,4 @@
-"""The HTTPS API of the broker (DESIGN.md, section 6.1.1).
+"""The HTTPS API of the broker.
 
 Each request needs HTTP basic authentication. The broker checks each request body and
 each answer against the schema. An error gives an ``ErrorResponse``.
@@ -132,7 +132,7 @@ class Api:
         except ContainerMissingError as exc:
             return error_answer(404, "not_found", str(exc))
         except DockerUnavailableError as exc:
-            # DESIGN.md, section 6.1.1, "Errors": Docker is part of the agent.
+            # Docker is part of the agent.
             log.warning("%s %s: %s", request.method, request.path, exc)
             return error_answer(503, "agent_unavailable", str(exc))
 
@@ -159,7 +159,7 @@ class Api:
             "provider": entry.provider_name.value,
             "container_state": container.state.value,
             "agent_state": (AgentState.OK if agent_status is not None else AgentState.UNREACHABLE).value,
-            # An agent that cannot be reached has the version "" (DESIGN.md, section 6.1.1).
+            # An agent that cannot be reached has the version "".
             "version": version if isinstance(version, str) else "",
         }
 
@@ -234,7 +234,7 @@ class Api:
         entry = self._entry(request)
         await entry.provider.delete_session(request.match_info["id"])
         self.proxy.forget_session(entry.name, request.match_info["id"])
-        # The answer is 204 with no body (DESIGN.md, section 6.1.1).
+        # The answer is 204 with no body.
         return web.Response(status=204)
 
     async def command(self, request: web.Request) -> web.Response:

@@ -1,4 +1,4 @@
-"""certtool (DESIGN.md, sections 6.1.4, 8.3, 8.4): the names, the validity and the key. The vault is a fake."""
+"""certtool: the names, the validity and the key. The vault is a fake."""
 import datetime
 import ipaddress
 from pathlib import Path

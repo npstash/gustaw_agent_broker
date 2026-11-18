@@ -1,4 +1,4 @@
-"""The configuration of the broker service (DESIGN.md, sections 8.3 and 12).
+"""The configuration of the broker service.
 
 ``config/config.yaml`` holds the default values. The optional local file
 ``.local_assets/config/local.yaml`` replaces values of the same keys. A local file cannot add a key,
@@ -25,7 +25,7 @@ SECRET_NAMES = ("tls_private_key", "api_username", "api_password", "opencode_pas
 # The secrets that the service opens at start. The provider opencode is not implemented, so its password is not opened.
 START_SECRETS = ["tls_private_key", "api_username", "api_password"]
 
-# The timeouts of the broker (DESIGN.md, section 12):
+# The timeouts of the broker:
 # - The broker waits AGENT_REQUEST_TIMEOUT for an answer of an agent, less than the request timeout of the client (15 s).
 AGENT_REQUEST_TIMEOUT_S = 10.0
 # - The broker waits DOCKER_INSPECT_TIMEOUT for an inspect of a container.
@@ -84,7 +84,7 @@ class AgentSettings:
 
 @dataclass(frozen=True)
 class Settings:
-    """The values that the service uses. The defaults are the defaults of DESIGN.md, section 12."""
+    """The values that the service uses. The defaults are the defaults of the service."""
     agents: tuple[AgentSettings, ...]
     host: str = "0.0.0.0"
     port: int = 38443

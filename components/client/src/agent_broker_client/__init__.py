@@ -1,4 +1,4 @@
-"""The client library and the agent API contract of the Agent Broker (DESIGN.md, sections 5.2, 6.1.3 and 8.2).
+"""The client library and the agent API contract of the Agent Broker.
 
 A program makes an ``HttpBrokerClient``. The broker client makes the session clients.
 The README of the component client shows the use.

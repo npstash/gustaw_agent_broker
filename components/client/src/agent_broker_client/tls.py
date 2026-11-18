@@ -1,4 +1,4 @@
-"""The TLS context of a client of the broker (DESIGN.md, section 9).
+"""The TLS context of a client of the broker.
 
 The certificate of the broker is self-signed. It is also the only trust anchor.
 The client checks the host name against the names in the certificate (CERT_NAMES).

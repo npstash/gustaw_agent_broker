@@ -1,4 +1,4 @@
-"""The provider ``agent_api``: HTTP to an agent that implements the agent API (DESIGN.md, section 6.1.2).
+"""The provider ``agent_api``: HTTP to an agent that implements the agent API.
 
 The URL of the agent is local. The connection has no TLS and no authentication.
 """
@@ -23,7 +23,7 @@ from .provider import AgentProvider, Event, UpstreamStream
 
 log = logs.get("provider")
 
-# The statuses of an agent that pass to the client unchanged (DESIGN.md, section 6.1.1, "Errors").
+# The statuses of an agent that pass to the client unchanged.
 PASSED_STATUSES = {400: "bad_request", 404: "not_found", 409: "busy"}
 
 
@@ -48,7 +48,7 @@ def _decode(raw: bytes) -> JsonValue:
 def _error_body(status: int, answer: JsonValue, raw: bytes) -> JsonObject:
     """The ``ErrorResponse`` of an error answer of the agent.
 
-    An answer that is no ErrorResponse gets the error value of its status (DESIGN.md, section 6.1.1, "Errors").
+    An answer that is no ErrorResponse gets the error value of its status.
     """
     if isinstance(answer, dict):
         try:
@@ -86,7 +86,7 @@ class SseStream(UpstreamStream):
                     try:
                         body = messages.validate_agent_event(event, models.decode_json(data))
                     except MessageError as exc:
-                        # The broker does not pass an event that breaks the contract (DESIGN.md, section 6.1.1, "Streams").
+                        # The broker does not pass an event that breaks the contract.
                         # The summary: the text of the error can hold content of the event.
                         log.warning("%s: an event of the agent is not correct; it is not passed: %s",
                                     self.label, exc.summary)
@@ -155,7 +155,7 @@ class AgentApiProvider(AgentProvider):
     def _session_body(self, answer: JsonValue, where: str) -> JsonObject:
         """A ``Session`` of the agent with the name of the agent in the configuration.
 
-        The agent does not know its name in the broker. The broker writes ``agent`` (DESIGN.md, section 6.1.1, "Session").
+        The agent does not know its name in the broker. The broker writes ``agent``.
         """
         if not isinstance(answer, dict):
             raise AgentUnavailableError(f"{where}: the session is not an object")
@@ -203,7 +203,7 @@ class AgentApiProvider(AgentProvider):
 
     async def _open(self, path: str) -> SseStream:
         where = f"{self._agent}: GET {path}"
-        # No read timeout: an agent sends no heartbeat (DESIGN.md, section 6.1.2).
+        # No read timeout: an agent sends no heartbeat.
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=self.request_timeout)
         try:
             async with asyncio.timeout(self.request_timeout):

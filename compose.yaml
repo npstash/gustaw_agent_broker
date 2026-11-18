@@ -1,4 +1,4 @@
-# Docker Compose of the Agent Broker (DESIGN.md, section 9).
+# Docker Compose of the Agent Broker.
 # update.sh builds the image and runs this file. It sets these variables:
 #   AGENT_BROKER_VAULT   the folder of vault-agent_broker on the host (found with dependencies.txt)
 #   DOCKER_GID           the group ID of the Docker socket on the host
@@ -28,5 +28,5 @@ services:
       - ${AGENT_BROKER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       # Read-write: the vault tool writes the access log of the vault.
       - ${AGENT_BROKER_VAULT:?run update.sh}:/workspace/vaults/vault-agent_broker
-      # The optional local configuration: local.yaml in this folder (DESIGN.md, section 8.3).
+      # The optional local configuration: local.yaml in this folder.
       - ./components/broker_service/.local_assets/config:/workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/config:ro

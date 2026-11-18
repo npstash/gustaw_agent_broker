@@ -1,4 +1,4 @@
-"""The broker service end to end (DESIGN.md, sections 6.1.1, 6.1.2 and 7): the real broker with TLS, driven
+"""The broker service end to end: the real broker with TLS, driven
 by the real client library, against a fake agent and a fake Docker engine.
 """
 from __future__ import annotations
@@ -428,7 +428,7 @@ def test_upstream_end_closes_the_client_stream_and_the_client_connects_again(in_
 
 
 def test_upstream_end_while_working_gives_command_failed(in_tmp: Path) -> None:
-    """DESIGN.md, section 6.1.1, "Failures": the upstream session stream ends in the state working."""
+    """The upstream session stream ends in the state working."""
     async def test(rig: Rig) -> None:
         session_id = rig.agent.add_session()
         async with rig.client() as bc:
@@ -505,7 +505,7 @@ def test_heartbeat_lines_on_an_idle_stream(in_tmp: Path) -> None:
 
 @pytest.mark.parametrize("stream", ["session", "broker"])
 def test_full_send_queue_closes_the_stream(in_tmp: Path, stream: str) -> None:
-    """DESIGN.md, section 6.1.1: a client that reads too slowly loses its stream. The upstream stream closes too."""
+    """a client that reads too slowly loses its stream. The upstream stream closes too."""
     async def test(rig: Rig) -> None:
         session_id = rig.agent.add_session()
         path = f"/agents/claude/sessions/{session_id}/events" if stream == "session" else "/events"
@@ -725,7 +725,7 @@ def test_failure_of_the_pump_ends_the_client_stream(in_tmp: Path, lines: list[st
 
 
 def test_full_queue_writes_the_number_of_lost_events(lines: list[str]) -> None:
-    """DESIGN.md, section 6.1.1: the broker writes the number of lost events of a closed stream to its log."""
+    """the broker writes the number of lost events of a closed stream to its log."""
     async def test() -> None:
         stream = ClientStream(make_mocked_request("GET", "/events"), web.StreamResponse(), label="s", limit=2,
                               heartbeat=1)

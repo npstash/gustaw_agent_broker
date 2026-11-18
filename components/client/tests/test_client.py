@@ -1,4 +1,4 @@
-"""The client library (DESIGN.md, sections 6.1.1 and 6.1.3) against a fake broker with TLS.
+"""The client library against a fake broker with TLS.
 
 Each test runs its own event loop. The stream intervals are short, so no test sleeps long.
 """
@@ -481,7 +481,7 @@ def test_event_that_breaks_the_schema_is_given_and_the_stream_continues(tls: Tls
 
 
 def test_change_of_session(tls: TlsFiles) -> None:
-    """DESIGN.md, section 7.3: the new session client gets its state; then the program closes the old one."""
+    """the new session client gets its state; then the program closes the old one."""
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
             old = await bc.create_session("claude", "x")
@@ -589,7 +589,7 @@ def test_two_readers_of_the_events_end_after_close(tls: TlsFiles) -> None:
 
 def test_full_queue_drops_the_connection_and_keeps_the_waiting_events(
         tls: TlsFiles, monkeypatch: pytest.MonkeyPatch) -> None:
-    """DESIGN.md, section 6.1.3: at STREAM_QUEUE_LIMIT the client drops the connection and connects again
+    """at STREAM_QUEUE_LIMIT the client drops the connection and connects again
     only after the program has read the waiting events."""
     monkeypatch.setattr(stream_module, "STREAM_QUEUE_LIMIT", 3)
 
@@ -619,7 +619,7 @@ def test_full_queue_drops_the_connection_and_keeps_the_waiting_events(
 
 
 def test_agent_control_has_its_own_timeout(tls: TlsFiles) -> None:
-    """DESIGN.md, section 6.1.3: start, stop and restart wait AGENT_CONTROL_TIMEOUT; each other request keeps its timeout."""
+    """start, stop and restart wait AGENT_CONTROL_TIMEOUT; each other request keeps its timeout."""
     assert abc_.AGENT_CONTROL_TIMEOUT_S == 60.0
 
     async def test(broker: FakeBroker) -> None:

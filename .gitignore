@@ -5,7 +5,7 @@ venv/
 # Python bytecode and build metadata
 *.egg-info/
 
-# Generated and intermediate files (rule deliverables-only)
+# Generated and intermediate files
 .local_assets/
 
 # Atomic-write leftovers

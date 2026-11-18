@@ -1,4 +1,4 @@
-"""Static analysis of the project (rule typed-code): mypy in strict mode, no explicit Any."""
+"""Static analysis of the project: mypy in strict mode, no explicit Any."""
 
 import subprocess
 import sys

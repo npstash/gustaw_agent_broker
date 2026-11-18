@@ -1,6 +1,6 @@
 """Secrets of the Agent Broker. The only real source is the vault (maya/tools/auth).
 
-The configuration of each component has this section (DESIGN.md, section 8.3)::
+The configuration of each component has this section::
 
     credentials:
       vault: vault-agent_broker

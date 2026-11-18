@@ -1,4 +1,4 @@
-"""The router: the agent that a URL names, with its provider and its container (DESIGN.md, section 5.1)."""
+"""The router: the agent that a URL names, with its provider and its container."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
@@ -21,7 +21,7 @@ def _agent_api(agent: AgentSettings, settings: Settings) -> AgentProvider:
     return AgentApiProvider(agent.name, agent.url, settings.agent_request_timeout)
 
 
-# The implemented providers. The provider opencode (DESIGN.md, section 6.2.1) is not implemented yet.
+# The implemented providers. The provider opencode is not implemented yet.
 FACTORIES: dict[Provider, ProviderFactory] = {Provider.AGENT_API: _agent_api}
 
 

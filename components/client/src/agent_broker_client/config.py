@@ -2,7 +2,7 @@
 
 A component has default values (committed, in the image) and local values (on the host).
 A local value replaces the default value of the same key. A change goes only into the
-local file (DESIGN.md, section 8.3).
+local file.
 
 A key is a dotted path, for example ``streams.heartbeat_interval_s``. A leaf is a
 value that is not a mapping. A list is a leaf.

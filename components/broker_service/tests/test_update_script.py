@@ -1,4 +1,4 @@
-"""update.sh (DESIGN.md, section 9): the logic of the host script, in a temporary git repository.
+"""update.sh: the logic of the host script, in a temporary git repository.
 
 A fake ``docker`` records each call. No test calls the real Docker engine. The tests that run the
 script without ``--dry-run`` use a local bare repository as origin and a fake ``docker``.

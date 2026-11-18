@@ -1,4 +1,4 @@
-"""A fake broker for the tests of the client library: the broker API of DESIGN.md, section 6.1.1.
+"""A fake broker for the tests of the client library: the broker API.
 
 It implements only what the tests need. It runs on 127.0.0.1 with TLS. The certificate comes
 from ``certtool.make_key_pair`` and stays in a temporary folder of pytest. The private key is

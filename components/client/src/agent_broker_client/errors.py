@@ -1,4 +1,4 @@
-"""The errors of the client library (DESIGN.md, section 6.1.1, "Errors").
+"""The errors of the client library.
 
 Each error answer of the broker becomes one subclass of BrokerError. ``status`` is the HTTP
 status. ``error`` is the error value of the ``ErrorResponse``, or None if the answer has none.

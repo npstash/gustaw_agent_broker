@@ -1,4 +1,4 @@
-"""The TLS context of the broker (DESIGN.md, sections 6.1.1 and 9).
+"""The TLS context of the broker.
 
 The certificate is the committed file of the component client. The private key comes from the vault.
 """

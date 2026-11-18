@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launcher of the component client.
 #   run.sh test [pytest args]   install the dev requirements and run the checks and the tests
-#   run.sh cert [args]          make a new key pair for the broker (DESIGN.md, section 6.1.4)
+#   run.sh cert [args]          make a new key pair for the broker
 set -euo pipefail
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$dir"
@@ -14,7 +14,7 @@ if [[ ! -x "$venv/bin/python" ]]; then
     mkdir -p "$dir/.local_assets"
     "$py" -m venv "$venv"
 fi
-# The bytecode caches of each Python of the runtime go into .local_assets/ (rule tests-and-ci).
+# The bytecode caches of each Python of the runtime go into .local_assets/.
 "$venv/bin/python" -c 'import pathlib, sys, sysconfig; pathlib.Path(sysconfig.get_paths()["purelib"], "local-assets-pycache.pth").write_text(f"import sys; sys.pycache_prefix = {sys.argv[1]!r}\n")' "$dir/.local_assets/pycache"
 if ! cmp -s requirements.txt "$venv/requirements.txt" 2>/dev/null || ! cmp -s pyproject.toml "$venv/pyproject.toml" 2>/dev/null; then
     "$venv/bin/python" -m pip install --quiet --upgrade pip

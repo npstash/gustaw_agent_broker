@@ -1,4 +1,4 @@
-"""Start and stop the broker service (DESIGN.md, sections 5.1 and 9).
+"""Start and stop the broker service.
 
 ``main`` reads the configuration, opens the secrets from the vault, makes the TLS context
 and runs the broker until SIGTERM or SIGINT. The broker keeps no state on disk.
@@ -49,7 +49,7 @@ class Broker:
         for entry in self.router.entries:
             await entry.provider.open()
         app = self.api.app()
-        # handler_cancellation: a client that goes away cancels its stream at once (DESIGN.md, section 7.3).
+        # handler_cancellation: a client that goes away cancels its stream at once.
         runner = web.AppRunner(app, handle_signals=False, handler_cancellation=True,
                                shutdown_timeout=SHUTDOWN_TIMEOUT_S, access_log=None)
         await runner.setup()
