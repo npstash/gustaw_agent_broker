@@ -2,7 +2,7 @@
 
 One API for several coding agents. A client selects an agent and a session in each call.
 
-Status: the broker with the agent API is implemented. It runs on broker-host, with no agent behind it yet. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
+Status: the broker with the agent API is implemented. It runs on broker-host, with the agent `claude` behind it. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
 
 ## SDD
 
@@ -48,6 +48,6 @@ Update: run `./update.sh`. The script pulls the current branch of the clone. It 
 
 Local configuration: write `components/broker_service/.local_assets/config/local.yaml`. Restart the container to apply it.
 
-Verified on broker-host (2026-11-16, commit `f9510d5`): the image build, the start of the container, the login, the certificate and the event stream. Not verified: an agent behind the broker.
+Verified on broker-host (2026-11-18, commit `2cf1715`): the image build, the start of the container, the tests of each component, the login and the certificate. A session at the agent `claude` gave a reply to a command and was deleted. Not verified: the agent `opencode`.
 
 Agent Broker is a submodule of the repository `the workspace`. It needs the repositories `maya-agent-kit` and `vault-agent_broker`. [dependencies.txt](dependencies.txt) gives their layouts.
