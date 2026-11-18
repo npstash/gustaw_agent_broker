@@ -209,6 +209,7 @@ An agent implements this API to work with the provider `agent_api`. HTTP on `127
 Rules for an agent:
 
 - The agent follows the session states and the failures of section 6.1.1.
+- The client library has the contract suite of this API (`agent_broker_client.contract`). An agent runs it against its own code. The tests of the broker run it against their fake agent.
 - The agent stores the client ID and the workspace with the session.
 - The session ID does not change during the life of a session. This applies also when the agent starts a new chat inside the session.
 - `DELETE /sessions/{id}` removes the stored chat of the session.

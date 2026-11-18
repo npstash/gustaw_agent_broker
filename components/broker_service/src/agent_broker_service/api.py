@@ -233,6 +233,7 @@ class Api:
     async def delete_session(self, request: web.Request) -> web.Response:
         entry = self._entry(request)
         await entry.provider.delete_session(request.match_info["id"])
+        self.proxy.forget_session(entry.name, request.match_info["id"])
         # The answer is 204 with no body (DESIGN.md, section 6.1.1).
         return web.Response(status=204)
 

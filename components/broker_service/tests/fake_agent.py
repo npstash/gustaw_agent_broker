@@ -34,6 +34,8 @@ def workspace_of(path: str) -> str | None:
             parts.pop()
             continue
         parts.append(part)
+    if len(parts) > 1:
+        return None     # a nested path
     return "/".join(parts) or "."
 
 

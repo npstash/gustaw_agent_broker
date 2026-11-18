@@ -445,6 +445,29 @@ def test_upstream_end_while_working_gives_command_failed(in_tmp: Path) -> None:
     run(test, in_tmp)
 
 
+def test_open_command_is_forgotten_after_its_reply_and_after_delete(in_tmp: Path) -> None:
+    async def test(rig: Rig) -> None:
+        session_id = rig.agent.add_session()
+        async with rig.client() as bc:
+            sc = bc.session("claude", session_id)
+            items = sc.events()
+            assert isinstance(await next_item(items), abc_.StateEvent)
+            command_id = uuid.uuid4()
+            await sc.send_command(command_id, "work")
+            assert isinstance(await next_item(items), abc_.StateEvent)
+            assert rig.broker.proxy.commands == {("claude", session_id): str(command_id)}
+            rig.agent.push(session_id, "reply", {"session": session_id, "command_id": str(command_id),
+                                                 "message": "done", "language": "en"})
+            assert isinstance(await next_item(items), abc_.ReplyEvent)
+            assert rig.broker.proxy.commands == {}
+            rig.agent.set_state(session_id, "idle")
+            await sc.send_command(uuid.uuid4(), "more")
+            assert rig.broker.proxy.commands
+            await bc.delete_session("claude", session_id)
+            assert rig.broker.proxy.commands == {}
+    run(test, in_tmp)
+
+
 def test_client_that_goes_away_closes_the_upstream_stream(in_tmp: Path) -> None:
     async def test(rig: Rig) -> None:
         session_id = rig.agent.add_session()

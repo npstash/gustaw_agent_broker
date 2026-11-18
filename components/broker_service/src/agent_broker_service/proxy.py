@@ -223,6 +223,10 @@ class EventProxy:
         """Keep the ID of an accepted command, for a notice if the upstream stream ends while it runs."""
         self.commands[(agent, session_id)] = command_id
 
+    def forget_session(self, agent: str, session_id: str) -> None:
+        """Forget the open command of a deleted session."""
+        self.commands.pop((agent, session_id), None)
+
     async def _pump(self, agent: str, session_id: str, upstream: UpstreamStream, stream: ClientStream) -> None:
         """Pass each upstream event to the client stream. End the client stream when the upstream stream ends.
 
@@ -239,6 +243,10 @@ class EventProxy:
                     continue
                 if event == "state":
                     state = str(out.get("state", ""))
+                elif event in ("reply", "notice") and out.get("command_id") is not None:
+                    # The command has ended: forget it.
+                    if self.commands.get((agent, session_id)) == out.get("command_id"):
+                        del self.commands[(agent, session_id)]
                 if not stream.offer(event, out):
                     return
             log.info("%s: the agent ended the stream", stream.label)
