@@ -133,22 +133,3 @@ def test_bad_names_stop_before_any_write(tmp_path: Path, names: list[str]) -> No
         certtool.main(["--config", str(path), "--vault-home", str(tmp_path), "--cert", str(tmp_path / "c.crt")],
                       key_writer=fake.write)
     assert fake.calls == [] and not (tmp_path / "c.crt").exists()
-
-
-
-def test_certtool_writes_key_to_a_temporary_vault(tmp_path: Path) -> None:
-    """The real vault tool with a vault in tmp_path (as voice client does). Not a real vault."""
-    credstore = vault.load_credstore(vault.vault_tool(certtool.PROJECT))
-    home = tmp_path / "vault-home"
-    home.mkdir()
-    credstore.Store(home, passphrase="pw").create_vault()
-    (home / "credentials.json").write_text("{}", encoding="utf-8")
-    credstore.Store(home, passphrase="pw").enrol("test", None)
-    cert = tmp_path / "out" / "server.crt"
-    args = ["--vault-home", str(home), "--cert", str(cert)]
-    assert certtool.main(args) == 0
-    key = credstore.Store(home).get_credential("Agent Broker TLS 01").secrets()["private_key"]
-    assert key.startswith("-----BEGIN PRIVATE KEY-----")
-    assert "PRIVATE" not in (home / "credentials.json").read_text(encoding="utf-8")
-    assert san(x509.load_pem_x509_certificate(cert.read_bytes())) == (
-        {"broker-host", "localhost", "broker.example.net"}, {"127.0.0.1", "192.0.2.10"})

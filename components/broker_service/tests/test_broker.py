@@ -118,7 +118,7 @@ def test_restart_gives_lifecycle_events_on_the_broker_stream(in_tmp: Path) -> No
 
 
 def test_stop_gives_one_lifecycle_event_for_the_end(in_tmp: Path) -> None:
-    """Docker sends "die" and "stop" for a stop. The broker reports one event for the end (X1)."""
+    """Docker sends "die" and "stop" for a stop. The broker reports one event for the end."""
     async def test(rig: Rig) -> None:
         async with rig.client() as bc:
             events = BrokerEvents(bc)
