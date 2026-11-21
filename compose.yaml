@@ -1,39 +1,39 @@
-# Docker Compose of the Agent Broker.
-# update.sh builds the image and runs this file. It sets these variables:
-#   AGENT_BROKER_VAULT   the folder of vault-agent_broker on the host (found with dependencies.txt)
-#   HOST_UID, HOST_GID   the user of update.sh on the host
-#   DOCKER_GID           the group ID of the Docker socket on the host
-#   AGENT_BROKER_CONFIG_DIR   the configuration folder on the host, for the optional local.yaml
-#   AGENT_BROKER_COMMIT, AGENT_BROKER_COMMIT_DATE, AGENT_BROKER_COMMIT_SUBJECT   the commit of the image
-# AGENT_BROKER_DOCKER_SOCKET (optional) is the path of the Docker socket on the host.
-# update.sh also writes these variables into .env, for plain docker compose commands.
+# Docker Compose of the Agent Broker. Portable: this file holds no host value.
+# prepare.sh copies this file into the deploy folder ${HOME}/containers/agent_broker/ and writes .env beside it.
+# update.sh builds the image agent_broker:latest. The process runs as the user of prepare.sh, with the group of the
+# Docker socket. HOME is a tmpfs; the folders below it are host folders. A host with a vault adds it with compose.override.yaml.
 name: agent_broker
 
 services:
   broker:
     container_name: agent_broker
-    image: agent-broker:latest
-    build:
-      context: .local_assets/build
-      dockerfile: workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/Dockerfile
-      args:
-        AGENT_BROKER_COMMIT: ${AGENT_BROKER_COMMIT:-unknown}
-        AGENT_BROKER_COMMIT_DATE: ${AGENT_BROKER_COMMIT_DATE:-}
-        AGENT_BROKER_COMMIT_SUBJECT: ${AGENT_BROKER_COMMIT_SUBJECT:-}
+    image: agent_broker:latest
     network_mode: host
     restart: unless-stopped
     init: true
     stop_grace_period: 20s
-    user: "${HOST_UID:?run update.sh}:${HOST_GID:?run update.sh}"
+    user: "${HOST_UID:?run prepare.sh}:${HOST_GID:?run prepare.sh}"
     group_add:
-      - "${DOCKER_GID:?run update.sh}"
-    # HOME and the scratch folder of the TLS key. They belong to the user of the container.
+      - "${DOCKER_GID:?run prepare.sh}"
+    # The secrets without a vault: AGENT_BROKER_API_USERNAME, AGENT_BROKER_API_PASSWORD and AGENT_BROKER_TLS_PRIVATE_KEY_FILE.
+    env_file:
+      - path: ${HOST_CONFIG_HOME:?run prepare.sh}/gustaw/agent_broker/agent_broker.env
+        required: false
+    environment:
+      HOME: /home/gustaw/agent_broker
+    # HOME also holds the scratch folder of the TLS key.
     tmpfs:
-      - /workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/home:uid=${HOST_UID},gid=${HOST_GID},mode=0700
-      - /workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/tls:uid=${HOST_UID},gid=${HOST_GID},mode=0700
+      - /home/gustaw/agent_broker:uid=${HOST_UID},gid=${HOST_GID},mode=0700
     volumes:
-      - ${AGENT_BROKER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
-      # Read-write: the vault tool writes the access log of the vault.
-      - ${AGENT_BROKER_VAULT:?run update.sh}:/workspace/vaults/vault-agent_broker
-      # The optional local configuration: local.yaml in the configuration folder of the host.
-      - ${AGENT_BROKER_CONFIG_DIR:?run update.sh}:/workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/config:ro
+      - type: bind
+        source: ${AGENT_BROKER_DOCKER_SOCKET:?run prepare.sh}
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      # The configuration: the optional local.yaml.
+      - type: bind
+        source: ${HOST_CONFIG_HOME:?run prepare.sh}/gustaw/agent_broker
+        target: /home/gustaw/agent_broker/.config/gustaw/agent_broker
+        read_only: true
+        bind:
+          create_host_path: false

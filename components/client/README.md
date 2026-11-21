@@ -18,7 +18,8 @@ A client project installs this component with pip. The package is `agent_broker_
 | `src/agent_broker_client/sse.py`, `tls.py` | SSE lines; the client TLS context. |
 | `src/agent_broker_client/certtool.py` | Make a new key pair for the broker. |
 | `src/agent_broker_client/config.py` | Read the YAML configuration. Keep the comments. |
-| `src/agent_broker_client/vault.py` | Get secrets from the vault with the vault tool (`maya/tools/auth`). `FakeSecrets` for tests. |
+| `src/agent_broker_client/secrets_proxy.py` | Get secrets from the vault or from environment variables. A copy of the reference code of maya-agent-kit. Do not change it. |
+| `src/agent_broker_client/vault.py` | Find the vault tool for certtool (`maya/tools/auth`). `FakeSecrets` for tests. |
 | `src/agent_broker_client/dependencies.py` | Find `maya-agent-kit` and the vault. A copy of the reference code. Do not change it. |
 | `src/agent_broker_client/jsontypes.py` | The types of a JSON value. |
 | `config/config.yaml` | The configuration of certtool: the certificate file, CERT_NAMES, CERT_VALIDITY, the vault and the vault entry of the private key. |

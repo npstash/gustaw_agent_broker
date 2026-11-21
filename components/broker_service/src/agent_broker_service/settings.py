@@ -1,11 +1,12 @@
 """The configuration of the broker service.
 
-``config/config.yaml`` holds the default values. The optional local file
-``.local_assets/config/local.yaml`` replaces values of the same keys. A local file cannot add a key,
+``config/config.yaml`` holds the default values. The optional local file ``local.yaml`` of the configuration
+folder ``${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`` replaces values of the same keys. A local file cannot add a key,
 so it cannot add an agent.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,9 +17,20 @@ from agent_broker_client.vault import resolve_path
 
 PROJECT = Path(__file__).resolve().parents[2]
 CONFIG_FILE = PROJECT / "config" / "config.yaml"
-LOCAL_CONFIG = PROJECT / ".local_assets" / "config" / "local.yaml"
+# The folder of the service below each XDG base folder.
+APP_FOLDER = Path("gustaw") / "agent_broker"
+
+
+def xdg_folder(variable: str, default: str) -> Path:
+    """The folder of the service below the XDG base folder of ``variable``, e.g. XDG_CONFIG_HOME."""
+    base = os.environ.get(variable) or str(Path.home() / default)
+    return Path(base) / APP_FOLDER
+
+
+LOCAL_CONFIG = xdg_folder("XDG_CONFIG_HOME", ".config") / "local.yaml"
 # The private key goes into a file here for some milliseconds only (see tls.server_context).
-TLS_SCRATCH = PROJECT / ".local_assets" / "tls"
+# The XDG runtime folder, else the cache folder: in the container, both are in the tmpfs HOME.
+TLS_SCRATCH = xdg_folder("XDG_RUNTIME_DIR", ".cache") / "tls"
 
 PROVIDERS = ("agent_api", "opencode")
 SECRET_NAMES = ("tls_private_key", "api_username", "api_password", "opencode_password")
@@ -67,7 +79,7 @@ VALIDATORS: dict[str, cfg.Validator] = {
     "docker.socket": _text,
     "language.threshold": cfg.number_range(0.0, 1.0),
     "cert.file": _text,
-    "credentials.vault": _text,
+    "credentials.vault": lambda value: None,
     **{f"credentials.secrets.{name}": cfg.secret_ref for name in SECRET_NAMES},
 }
 

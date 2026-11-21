@@ -12,7 +12,7 @@ import ssl
 from aiohttp import web
 
 from agent_broker_client import config as cfg
-from agent_broker_client import vault
+from agent_broker_client import dependencies, secrets_proxy
 
 from . import logs, router, settings, tls
 from .api import Api
@@ -32,7 +32,7 @@ class Broker:
     ``secrets`` gives ``api_username`` and ``api_password``. ``ssl_context`` holds the certificate and the key.
     """
 
-    def __init__(self, conf: Settings, secrets: vault.Secrets, ssl_context: ssl.SSLContext):
+    def __init__(self, conf: Settings, secrets: secrets_proxy.Secrets, ssl_context: ssl.SSLContext):
         self.settings = conf
         self.ssl_context = ssl_context
         self.router = router.build(conf)
@@ -40,7 +40,7 @@ class Broker:
                                    control_timeout=conf.docker_control_timeout)
         self.proxy = EventProxy(self.router, self.docker, heartbeat=conf.heartbeat_interval,
                                 queue_limit=conf.queue_limit, reconnect_interval=conf.reconnect_interval)
-        self.api = Api(self.router, self.docker, self.proxy, secrets.get("api_username"), secrets.get("api_password"))
+        self.api = Api(self.router, self.docker, self.proxy, secrets.get_secret("api_username"), secrets.get_secret("api_password"))
         self._runner: web.AppRunner | None = None
         self.port: int | None = None
 
@@ -101,10 +101,14 @@ def main() -> int:
         conf = settings.load()
         values = settings.from_config(conf)
         logs.setup(values.log_level)
-        secrets = vault.from_config(settings.PROJECT, conf.section("credentials")).open(settings.START_SECRETS)
-        context = tls.server_context(values.cert_file, secrets.get("tls_private_key"), settings.TLS_SCRATCH)
+        credentials = conf.section("credentials")
+        refs = credentials.get("secrets")
+        start = {name: ref for name, ref in refs.items() if name in settings.START_SECRETS} if isinstance(refs, dict) else refs
+        secrets = secrets_proxy.open_secrets({**credentials, "secrets": start},
+                                             lambda name: dependencies.find(name, settings.PROJECT))
+        context = tls.server_context(values.cert_file, secrets.get_secret("tls_private_key"), settings.TLS_SCRATCH)
         broker = Broker(values, secrets, context)
-    except (cfg.ConfigError, vault.SecretError, OSError, ssl.SSLError) as exc:
+    except (cfg.ConfigError, secrets_proxy.SecretError, dependencies.DependencyError, OSError, ssl.SSLError) as exc:
         log.error("Start failed: %s", exc)
         return 1
     try:

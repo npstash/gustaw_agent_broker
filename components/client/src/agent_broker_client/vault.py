@@ -1,14 +1,8 @@
-"""Secrets of the Agent Broker. The only real source is the vault (maya/tools/auth).
+"""The vault tool for certtool, the path of a configuration file, and the secrets of the tests.
 
-The configuration of each component has this section::
-
-    credentials:
-      vault: vault-agent_broker
-      secrets:
-        <name>: {entry: "<vault entry>", key: "<secret key>"}
-
-The vault and the vault tool (maya/tools/auth) are found with dependencies.py (rule
-submodule-dependencies of the repository maya-agent-kit). A component opens its secrets at start. Tests use FakeSecrets.
+A component reads its secrets with secrets_proxy. certtool writes the private key into the vault with the
+vault tool (maya/tools/auth). The vault and the vault tool are found with dependencies.py (rule
+submodule-dependencies of the repository maya-agent-kit). Tests use FakeSecrets.
 """
 from __future__ import annotations
 
@@ -17,27 +11,20 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
-from typing import Protocol
 
 from . import dependencies
-from .jsontypes import JsonObject
+from .secrets_proxy import SecretError, Secrets
+
+__all__ = ["FakeSecrets", "SecretError", "Secrets", "find", "load_credstore", "resolve_path", "vault_tool"]
 
 
-class SecretError(RuntimeError):
-    """A secret is not available."""
-
-
-class Secrets(Protocol):
-    def get(self, name: str) -> str: ...
-
-
-class FakeSecrets:
+class FakeSecrets(Secrets):
     """Secrets in memory, for tests."""
 
     def __init__(self, values: Mapping[str, str]):
         self._values = dict(values)
 
-    def get(self, name: str) -> str:
+    def get_secret(self, name: str) -> str:
         try:
             return self._values[name]
         except KeyError:
@@ -74,58 +61,3 @@ def resolve_path(base_dir: Path, value: str) -> Path:
     if not path.is_absolute():
         path = (Path(base_dir) / path).resolve()
     return path
-
-
-class _Credential(Protocol):
-    """What this module reads from a credential of the vault tool."""
-
-    def secrets(self) -> Mapping[str, str]: ...
-
-
-class VaultSecrets:
-    """Secrets from the vault. ``open()`` reads all of them at once."""
-
-    def __init__(self, vault_home: Path, refs: Mapping[str, Mapping[str, str]], tool_dir: Path | None = None):
-        self.vault_home = Path(vault_home)
-        self.tool_dir = tool_dir
-        self.refs = {name: dict(ref) for name, ref in refs.items()}
-        self._values: dict[str, str] = {}
-
-    def open(self, names: list[str] | None = None) -> "VaultSecrets":
-        credstore = load_credstore(self.tool_dir)
-        cache: dict[str, _Credential] = {}
-        for name in names if names is not None else list(self.refs):
-            ref = self.refs.get(name)
-            if ref is None:
-                raise SecretError(f"the configuration names no vault entry for '{name}'")
-            entry, key = ref["entry"], ref["key"]
-            try:
-                if entry not in cache:
-                    cache[entry] = credstore.get_credential(entry, vault_home=self.vault_home)
-                value = cache[entry].secrets().get(key)
-            except credstore.CredentialError as exc:
-                raise SecretError(f"vault entry '{entry}': {exc}") from None
-            if not value:
-                raise SecretError(f"vault entry '{entry}' has no value for '{key}'")
-            self._values[name] = value
-        return self
-
-    def get(self, name: str) -> str:
-        try:
-            return self._values[name]
-        except KeyError:
-            raise SecretError(f"the secret '{name}' is not open") from None
-
-
-def from_config(base_dir: Path, credentials: JsonObject) -> VaultSecrets:
-    """Make a VaultSecrets from the ``credentials`` section. ``base_dir`` is the folder of the component."""
-    vault = credentials["vault"]
-    secrets = credentials.get("secrets", {})
-    if not isinstance(vault, str) or not isinstance(secrets, dict):
-        raise SecretError("the credentials section needs a vault name and a secrets mapping")
-    refs: dict[str, Mapping[str, str]] = {}
-    for name, ref in secrets.items():
-        if not isinstance(ref, dict) or not all(isinstance(v, str) for v in ref.values()):
-            raise SecretError(f"the secret reference '{name}' must be a mapping of strings")
-        refs[name] = {k: v for k, v in ref.items() if isinstance(v, str)}
-    return VaultSecrets(find(vault, base_dir), refs, vault_tool(base_dir))

@@ -41,15 +41,16 @@ def test_config_validator_at_load(tmp_path: Path) -> None:
 
 def test_secret_ref() -> None:
     cfg.secret_ref({"entry": "a", "key": "b"})
+    cfg.secret_ref({"env": "A_VARIABLE"})
     with pytest.raises(cfg.ConfigError):
         cfg.secret_ref({"entry": "a"})
 
 
 def test_fake_secrets() -> None:
     secrets = vault.FakeSecrets({"a": "1"})
-    assert secrets.get("a") == "1"
+    assert secrets.get_secret("a") == "1"
     with pytest.raises(vault.SecretError):
-        secrets.get("b")
+        secrets.get_secret("b")
 
 
 def test_vault_find_gives_a_secret_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,17 +59,6 @@ def test_vault_find_gives_a_secret_error(tmp_path: Path, monkeypatch: pytest.Mon
     (tmp_path / "dependencies.txt").write_text("[maya-agent-kit]\n../nothing\n", encoding="utf-8")
     with pytest.raises(vault.SecretError, match="maya-agent-kit is not found"):
         vault.vault_tool(tmp_path)
-
-
-def test_from_config_finds_the_vault_by_its_name(tmp_path: Path) -> None:
-    (tmp_path / "p").mkdir()
-    (tmp_path / "p" / "dependencies.txt").write_text(
-        "[maya-agent-kit]\n../maya\n[vault-x]\n../vault-x\n", encoding="utf-8")
-    for name in ("maya", "vault-x"):
-        (tmp_path / name).mkdir()
-        (tmp_path / name / "README.md").write_text("x", encoding="utf-8")
-    secrets = vault.from_config(tmp_path / "p" / "c", {"vault": "vault-x", "secrets": {}})
-    assert secrets.vault_home == tmp_path / "vault-x" and secrets.tool_dir == tmp_path / "maya" / "tools" / "auth"
 
 
 def test_project_dependencies_file_finds_both_submodules() -> None:

@@ -45,3 +45,7 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261120-01 Nestor cb09fc0815a3 The container runs as the user of update.sh, not as a fixed UID; HOME and the TLS scratch folder are tmpfs folders of that user
 - 20261120-02 Nestor cb09fc0815a3 The local configuration is in the XDG configuration folder of that user below gustaw/agent_broker, not in the clone
 - 20261120-03 Nestor cb09fc0815a3 update.sh writes the variables of compose.yaml into .env of the project folder; the operator values are in config.env of the configuration folder
+- 20261121-01 Nestor 3ab720748196 The image holds the code in /opt/gustaw/agent_broker and no part of maya-agent-kit; a host with a vault mounts the vault and the vault tool beside it with compose.override.yaml
+- 20261121-02 Nestor 3ab720748196 The service gets its secrets through secrets_proxy: from the vault if credentials.vault is set, else from environment variables; the default configuration names no vault
+- 20261121-03 Nestor 3ab720748196 HOME is the tmpfs /home/gustaw/agent_broker; the configuration folder is mounted read-only at its XDG path below HOME
+- 20261121-04 Nestor 3ab720748196 prepare.sh writes the deploy folder ${HOME}/containers/agent_broker; update.sh builds and tags the image, then runs prepare.sh and docker compose up -d; --no-up skips the last step

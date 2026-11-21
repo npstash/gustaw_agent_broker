@@ -104,7 +104,7 @@ flowchart TD
 
 #### 6.1.1 Broker API
 
-HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs HTTP basic authentication with the login of the vault entry `Agent Broker API 01`. All clients use the same login. Section 8.2 gives the schema of each message.
+HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs HTTP basic authentication with the API login (section 8.4). All clients use the same login. Section 8.2 gives the schema of each message.
 
 `{agent}` is the name of an agent from the configuration. `{id}` is a session ID that the agent made.
 
@@ -240,7 +240,8 @@ Rules for an agent:
 | --- | --- |
 | `run.sh cert` | Makes a new key pair with the names of CERT_NAMES. Writes the certificate to `tls/server.crt` and the key to the vault. |
 | `run.sh test` | Installs the test dependencies in a venv and runs the tests. |
-| `update.sh [--dry-run]` | Host: pulls the current branch, builds the image and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. |
+| `update.sh [--dry-run] [--no-up] [--override FILE]` | Host: pulls the current branch, builds the image, runs `prepare.sh` and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. `--no-up` skips the start. |
+| `prepare.sh [--dry-run] [--override FILE]` | Host: makes the configuration folder and the deploy folder with `compose.yaml` and `.env`. With `--override FILE`: the override and the folders of the vault. |
 
 ### 6.2 Component interfaces
 
@@ -255,7 +256,7 @@ Rules for an agent:
 
 #### 6.2.1 Provider `opencode`
 
-The provider `opencode` implements the operations of section 6.1.1 with the OpenCode API (`/api/...`, HTTP basic authentication, username `opencode`, password from the vault entry `OpenCode API token`).
+The provider `opencode` implements the operations of section 6.1.1 with the OpenCode API (`/api/...`, HTTP basic authentication, username `opencode`, password: the OpenCode password of section 8.4).
 
 | Broker operation | OpenCode |
 | --- | --- |
@@ -373,13 +374,13 @@ Changes against the schema of voice client:
 | `docker.socket` | DOCKER_SOCKET |
 | `language.languages`, `language.threshold` | LANGUAGES, LANGUAGE_THRESHOLD |
 | `cert.file` | The certificate file |
-| `credentials.vault`, `credentials.secrets` | The name of the vault and the vault entry of each secret |
+| `credentials.vault`, `credentials.secrets` | The name of the vault (empty: no vault), and the vault entry and the environment variable of each secret |
 
 The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CONTROL_TIMEOUT (60 s) and its own STREAM_QUEUE_LIMIT (100) are values of the client library (section 12).
 
 `config/config.yaml` of the component client is the only source of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it.
 
-The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`.local_assets/config/local.yaml`) can change each value of these agents, also `enabled`. It cannot add another agent.
+The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`local.yaml` of `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`) can change each value of these agents, also `enabled`. It cannot add another agent.
 
 
 Default agents:
@@ -389,15 +390,19 @@ Default agents:
 | `claude` | yes | `agent_api` | `http://127.0.0.1:38444` | `claude_code_server` |
 | `opencode` | no (its provider does not exist yet) | `opencode` | `http://127.0.0.1:4096` | `opencode` |
 
-### 8.4 Vault entries
+### 8.4 Secrets
 
-The vault is the repository `vault-agent_broker`.
+The broker service gets its secrets with `secrets_proxy`, a copy of the reference code of maya-agent-kit. The source is selected one time, at the start:
 
-| Entry | Secrets | Used by |
-| --- | --- | --- |
-| `Agent Broker TLS 01` | `private_key` (PEM) | Broker service |
-| `Agent Broker API 01` | `username`, `password` | Broker service |
-| `OpenCode API token` | `password` | Provider `opencode` |
+- `credentials.vault` is set: each secret comes from the vault `vault-agent_broker`. There is no fallback.
+- `credentials.vault` is empty: each secret comes from its environment variable, or from the file of `<variable>_FILE`.
+  The service removes these variables from its environment.
+
+| Secret | Vault entry and key | Environment variable | Used by |
+| --- | --- | --- | --- |
+| TLS private key (PEM) | `Agent Broker TLS 01`, `private_key` | `AGENT_BROKER_TLS_PRIVATE_KEY` (use `_FILE`: an env file holds one line only) | Broker service |
+| API login | `Agent Broker API 01`, `username` and `password` | `AGENT_BROKER_API_USERNAME`, `AGENT_BROKER_API_PASSWORD` | Broker service |
+| OpenCode password | `OpenCode API token`, `password` | `AGENT_BROKER_OPENCODE_PASSWORD` | Provider `opencode` |
 
 - `certtool` makes the key of `Agent Broker TLS 01` directly in this vault.
 - A client project keeps its own copy of the login `Agent Broker API 01` in its own vault.
@@ -406,19 +411,20 @@ The vault is the repository `vault-agent_broker`.
 
 - The target environment: Ubuntu Server 26.04 LTS, Docker Engine with the rootful daemon.
 - The broker runs as one Docker container on the target host, with the host network.
-- The image is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) and the vault tool of maya-agent-kit (`tools/auth`). It holds no secret and no vault.
-- The image has the layout of a workspace (`/workspace/projects/gustaw/gustaw_agent_broker`, `/workspace/maya`, `/workspace/vaults/vault-agent_broker`), so the paths of `dependencies.txt` stay valid.
-- The container runs as the user of `update.sh` on the host (`HOST_UID`, `HOST_GID`), not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`). HOME and the scratch folder of the TLS key are `tmpfs` folders of that user.
+- The image `agent_broker:<commit>` and `agent_broker:latest` is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) in `/opt/gustaw/agent_broker`. It holds no secret, no vault and no part of maya-agent-kit.
+- A host with a vault mounts the vault at `/opt/gustaw/vault-agent_broker` and the vault tool at `/opt/gustaw/maya/tools/auth` with `compose.override.yaml`. The paths of `dependencies.txt` (`../vault-agent_broker`, `../maya`) find them.
+- The container runs as the user of `prepare.sh` on the host (`HOST_UID`, `HOST_GID`), not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`). HOME is the `tmpfs` `/home/gustaw/agent_broker` of that user. It holds the scratch folder of the TLS key.
 - The project has its own clone on the host, with the dependencies next to it or inside it. `update.sh` works on the repository that it is in:
   1. It checks that HEAD is on a branch and that the clone has no local changes. It pulls the current branch with `git pull --ff-only`. It does not switch the branch, so the clone can stay on a release branch.
-  2. It checks that each dependency of `dependencies.txt` is available, with the lookup of the rule submodule-dependencies. It does not pull or change the dependencies.
-  3. It builds the image from the committed code (`git archive` of the project and of `tools/auth` of maya-agent-kit), with the commit ID, date and subject as build arguments.
-  4. It runs `docker compose up -d`: the container is made again from the new image.
+  2. It builds the image from the committed code (`git archive` of the project), with the commit ID, date and subject as build arguments.
+  3. It runs `prepare.sh`: the configuration folder, the deploy folder `${HOME}/containers/agent_broker/` with `compose.yaml` and `.env`. With `--override FILE`, `prepare.sh` finds the vault and the vault tool with the lookup of the rule submodule-dependencies.
+  4. It runs `docker compose up -d` in the deploy folder: the container is made again from the new image. `--no-up` skips this step.
 - A restart of the container does not update the code.
-- `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`.
-- Mounts: the Docker socket; the folder of the vault, read-write (the vault tool writes its access log); the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `components/broker_service/.local_assets/config` of the container, for the optional `local.yaml`. `update.sh` finds the folder of the vault and the configuration folder, and gives them to Compose in `AGENT_BROKER_VAULT` and `AGENT_BROKER_CONFIG_DIR`. No path is fixed in `compose.yaml`.
-- `update.sh` writes the variables of `compose.yaml` into `.env` of the project folder (not committed). Plain `docker compose` commands then work. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET. A variable of the environment replaces a value of `config.env`.
-- The clone key of the host clone must open the vault without a terminal (section 11).
+- `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`. It holds no value of a host.
+- Mounts: the Docker socket; the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `~/.config/gustaw/agent_broker/` of the container, for the optional `local.yaml` and the secrets. With a vault, `compose.override.yaml` adds the vault, read-write (the vault tool writes its access log), and the vault tool, read-only.
+- The secrets without a vault come from `agent_broker.env` of the configuration folder (`env_file`, optional).
+- `prepare.sh` writes the variables of `compose.yaml` into `.env` of the deploy folder. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET. A variable of the environment replaces a value of `config.env`.
+- With a vault, the clone key of the host clone must open the vault without a terminal.
 - The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. It is committed in `tls/server.crt`. Each client reads it from the submodule.
 
 | Dependency | Container | Use |
@@ -426,7 +432,7 @@ The vault is the repository `vault-agent_broker`.
 | Python 3.14, aiohttp | Broker service, client library | HTTP server, HTTP client, SSE |
 | Docker Engine API | Broker service | Container control: direct HTTP calls on the Docker socket with aiohttp, no Docker library |
 | lingua-language-detector | Broker service | Language of the replies of OpenCode |
-| maya-agent-kit (vault tool) | Broker service, certtool | Secrets |
+| maya-agent-kit (vault tool) | Broker service with a vault, certtool | Secrets |
 
 ## 10. Architecture decisions
 
@@ -434,7 +440,7 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 
 ## 11. Open issues
 
-- `update.sh` pulls the project and only checks the dependencies (`maya-agent-kit`, the vault). A newer project can need a newer dependency. The owner pulls the dependencies by hand. Open: `update.sh` pulls them too, or they become submodules of the project.
+- `update.sh` pulls the project. `prepare.sh --override` only finds the vault and the vault tool. A newer project can need a newer vault tool. The owner pulls the dependencies by hand. Open: `update.sh` pulls them too, or they become submodules of the project.
 - **MISSING:** the configuration values of OpenCode that `GET` and `PUT /agents/opencode/config` give.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on the target host is its workspace folder.

@@ -19,20 +19,20 @@ The provider `opencode` (section 6.2.1) is not implemented yet. The service skip
 | `src/agent_broker_service/settings.py` | The configuration values and their checks. |
 | `src/agent_broker_service/tls.py`, `logs.py`, `version.py`, `errors.py` | The TLS context, the log lines, the version line, the errors. |
 | `config/config.yaml` | The default configuration ([DESIGN.md](../../sdd/DESIGN.md), sections 8.3 and 12). No secrets. |
-| `Dockerfile` | The image of the service. `update.sh` and `compose.yaml` in the project folder build and run it. |
+| `Dockerfile` | The image of the service. `update.sh`, `prepare.sh` and `compose.yaml` in the project folder build and run it. |
 | `requirements.txt` | The pinned dependencies. It installs [../client](../client/README.md) as a path dependency. |
 
 ## Run
 
 - Service: `run.sh` with no verb. The service runs in the foreground until SIGTERM or SIGINT.
-- At start, the service opens the vault entries `Agent Broker TLS 01` and `Agent Broker API 01` with the vault tool. The clone key of this clone must open the vault.
+- At start, the service opens its secrets: from the vault if `credentials.vault` is set, else from environment variables (see the README of the project, "Secrets").
 - The certificate is `../client/tls/server.crt` (`cert.file`). Make it with `../client/run.sh cert`.
 - The log lines go to the standard error output. The first line gives the version: commit, date and subject.
 - In a Docker image, give the version in `AGENT_BROKER_COMMIT`, `AGENT_BROKER_COMMIT_DATE` and `AGENT_BROKER_COMMIT_SUBJECT`.
 
 ## Configure
 
-- Change a value in `.local_assets/config/local.yaml`. A local value replaces the default value of the same key.
+- Change a value in `local.yaml` of `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`. A local value replaces the default value of the same key.
 - A local file cannot add a key. It cannot add an agent. It can change each value of the agents `claude` and `opencode`.
 - Each agent has `enabled`. The default is `true` for `claude` and `false` for `opencode`. The service serves only an enabled agent. A call for a disabled agent gives `404`.
 - `log.level` is the log level: `ERROR`, `WARNING`, `INFO` (default) or `DEBUG`.

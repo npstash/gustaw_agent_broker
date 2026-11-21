@@ -39,10 +39,13 @@ language:
 cert:
   file: ../client/tls/server.crt
 
+# Without credentials.vault, each secret comes from its environment variable env, or from the file of <env>_FILE.
+# Give the private key with <env>_FILE: an env file cannot hold a value of more than one line.
+# With credentials.vault (e.g. vault-agent_broker in local.yaml), each secret comes from the vault; dependencies.txt finds it.
 credentials:
-  vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
+  vault: ""                          # empty: no vault; or the name of the vault, e.g. vault-agent_broker
   secrets:
-    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key}
-    api_username: {entry: "Agent Broker API 01", key: username}
-    api_password: {entry: "Agent Broker API 01", key: password}
-    opencode_password: {entry: "OpenCode API token", key: password}
+    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key, env: AGENT_BROKER_TLS_PRIVATE_KEY}
+    api_username: {entry: "Agent Broker API 01", key: username, env: AGENT_BROKER_API_USERNAME}
+    api_password: {entry: "Agent Broker API 01", key: password, env: AGENT_BROKER_API_PASSWORD}
+    opencode_password: {entry: "OpenCode API token", key: password, env: AGENT_BROKER_OPENCODE_PASSWORD}

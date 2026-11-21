@@ -1,8 +1,7 @@
 # Image of the broker service.
-# The build context is .local_assets/build/ of the project: update.sh fills it with git archive
-# of this project and of maya/tools/auth, in the layout of a workspace. The layout keeps the
-# relative paths of dependencies.txt valid: ../../../maya and ../../../vaults/vault-agent_broker.
-# The image holds no secret and no vault. The vault is a mount (compose.yaml).
+# The build context is .local_assets/build/ of the project: update.sh fills it with git archive of this project
+# into opt/gustaw/agent_broker/. The image holds no secret, no vault and no part of maya-agent-kit.
+# A host with a vault mounts the vault and the vault tool beside the code (compose.override.yaml of the host).
 FROM ubuntu:26.04
 
 ARG AGENT_BROKER_COMMIT=unknown
@@ -21,18 +20,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv
 
-COPY workspace /workspace
-ARG PROJECT=/workspace/projects/gustaw/gustaw_agent_broker
-WORKDIR ${PROJECT}/components/broker_service
+COPY opt /opt
+WORKDIR /opt/gustaw/agent_broker/components/broker_service
 # requirements.txt has the editable installs of the component client and of this component.
 # The service finds config/ from its source folder, so it must stay an editable install.
-# The vault tool (maya/tools/auth) needs cryptography and keyring: the component client installs them.
+# The vault tool (maya/tools/auth), if a host mounts it, needs cryptography and keyring: the component client installs them.
 RUN pip install -r requirements.txt
 
-# The mount points of compose.yaml: the local configuration, HOME and the scratch folder of the TLS key.
-# compose.yaml sets the user of the container.
-RUN mkdir -p .local_assets/tls .local_assets/config .local_assets/home
-ENV HOME=${PROJECT}/components/broker_service/.local_assets/home
+# compose.yaml sets the user of the container and its HOME, a tmpfs.
 
 ENV AGENT_BROKER_COMMIT=${AGENT_BROKER_COMMIT}
 ENV AGENT_BROKER_COMMIT_DATE="${AGENT_BROKER_COMMIT_DATE}" \

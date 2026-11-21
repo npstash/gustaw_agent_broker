@@ -1,6 +1,6 @@
 """The TLS context of the broker.
 
-The certificate is the committed file of the component client. The private key comes from the vault.
+The certificate is the file of the configuration key cert.file. The private key is a secret of the service.
 """
 from __future__ import annotations
 

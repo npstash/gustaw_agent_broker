@@ -418,6 +418,9 @@ def log_level(value: JsonValue) -> None:
 
 
 def secret_ref(value: JsonValue) -> None:
-    if not (isinstance(value, dict) and isinstance(value.get("entry"), str)
-            and isinstance(value.get("key"), str) and set(value) == {"entry", "key"}):
-        raise ConfigError("a secret reference must be {entry: <vault entry>, key: <secret name>}")
+    """A secret reference: the vault entry and its key, and the environment variable."""
+    fields = ("entry", "key", "env")
+    if not (isinstance(value, dict) and value and set(value) <= set(fields)
+            and all(isinstance(v, str) and v for v in value.values())
+            and ("env" in value or {"entry", "key"} <= set(value))):
+        raise ConfigError("a secret reference must be {entry: <vault entry>, key: <secret name>, env: <variable>}")

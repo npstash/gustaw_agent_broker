@@ -23,10 +23,10 @@ def test_default_configuration_follows_the_design() -> None:
     assert conf.get_float("language.threshold") == 0.70
     assert conf.get_str("cert.file") == "../client/tls/server.crt"
     assert conf.get_str_map("credentials.secrets.tls_private_key") == {
-        "entry": "Agent Broker TLS 01", "key": "private_key"}
+        "entry": "Agent Broker TLS 01", "key": "private_key", "env": "AGENT_BROKER_TLS_PRIVATE_KEY"}
     assert conf.get_str("agents.claude.provider") == "agent_api"
     assert conf.get_str("agents.opencode.container") == "opencode"
-    assert conf.get_str("credentials.vault") == "vault-agent_broker"
+    assert conf.get_str("credentials.vault") == ""
 
 
 def test_certificate_values_have_one_source() -> None:
