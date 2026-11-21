@@ -29,11 +29,9 @@ WORKDIR ${PROJECT}/components/broker_service
 # The vault tool (maya/tools/auth) needs cryptography and keyring: the component client installs them.
 RUN pip install -r requirements.txt
 
-# The container runs as UID 1000. This account writes the scratch folder of the TLS key and reads
-# the local configuration. HOME is a folder that this account can write.
-RUN mkdir -p .local_assets/tls .local_assets/config .local_assets/home \
-    && chown -R 1000:1000 .local_assets
-USER 1000:1000
+# The mount points of compose.yaml: the local configuration, HOME and the scratch folder of the TLS key.
+# compose.yaml sets the user of the container.
+RUN mkdir -p .local_assets/tls .local_assets/config .local_assets/home
 ENV HOME=${PROJECT}/components/broker_service/.local_assets/home
 
 ENV AGENT_BROKER_COMMIT=${AGENT_BROKER_COMMIT}

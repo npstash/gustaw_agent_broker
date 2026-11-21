@@ -53,10 +53,18 @@ class Layout:
     docker_log: Path
     socket: Path
     bin: Path
+    config_home: Path
 
-    def run(self, *args: str) -> subprocess.CompletedProcess[str]:
+    @property
+    def config_dir(self) -> Path:
+        return self.config_home / "gustaw" / "agent_broker"
+
+    def run(self, *args: str, socket_from_env: bool = True) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}", "FAKE_DOCKER_LOG": str(self.docker_log),
-               "AGENT_BROKER_DOCKER_SOCKET": str(self.socket)}
+               "XDG_CONFIG_HOME": str(self.config_home)}
+        env.pop("AGENT_BROKER_DOCKER_SOCKET", None)
+        if socket_from_env:
+            env["AGENT_BROKER_DOCKER_SOCKET"] = str(self.socket)
         return subprocess.run(["bash", str(self.project / "update.sh"), *args], capture_output=True, text=True, env=env)
 
     def docker_calls(self) -> list[str]:
@@ -99,7 +107,7 @@ def layout(tmp_path: Path) -> Layout:
     (bin_dir / "docker").chmod(0o755)
     socket = tmp_path / "docker.sock"
     socket.write_text("")
-    return Layout(base, base / "project", tmp_path / "docker.log", socket, bin_dir)
+    return Layout(base, base / "project", tmp_path / "docker.log", socket, bin_dir, tmp_path / "config")
 
 
 def steps(out: str) -> list[str]:
@@ -126,6 +134,8 @@ def test_dry_run_gives_the_steps_in_order_and_runs_nothing(layout: Layout) -> No
     assert pull < build < up
     assert layout.docker_calls() == []            # a dry run calls no docker
     assert not (layout.project / ".local_assets").exists()   # and writes nothing
+    assert not (layout.project / ".env").exists()
+    assert not layout.config_home.exists()
 
 
 def test_dry_run_keeps_the_branch_and_pulls_the_current_one(layout: Layout) -> None:
@@ -181,6 +191,25 @@ def test_vault_path_for_compose_is_the_found_one(layout: Layout) -> None:
     vault = (layout.base / "vault-agent_broker").resolve()
     assert f"update: compose variable AGENT_BROKER_VAULT={vault}" in result.stdout
     assert f"update: compose variable DOCKER_GID={layout.socket.stat().st_gid}" in result.stdout
+    assert f"update: compose variable HOST_UID={os.getuid()}" in result.stdout
+    assert f"update: compose variable HOST_GID={os.getgid()}" in result.stdout
+    assert f"update: compose variable AGENT_BROKER_CONFIG_DIR={layout.config_dir}" in result.stdout
+
+
+def test_socket_comes_from_config_env_without_the_variable(layout: Layout) -> None:
+    layout.config_dir.mkdir(parents=True)
+    (layout.config_dir / "config.env").write_text(f"AGENT_BROKER_DOCKER_SOCKET={layout.socket}\n")
+    result = layout.run("--dry-run", socket_from_env=False)
+    assert result.returncode == 0, result.stderr
+    assert f"update: compose variable AGENT_BROKER_DOCKER_SOCKET={layout.socket}" in result.stdout
+
+
+def test_variable_replaces_the_socket_of_config_env(layout: Layout) -> None:
+    layout.config_dir.mkdir(parents=True)
+    (layout.config_dir / "config.env").write_text("AGENT_BROKER_DOCKER_SOCKET=/no/such/socket\n")
+    result = layout.run("--dry-run")
+    assert result.returncode == 0, result.stderr
+    assert f"update: compose variable AGENT_BROKER_DOCKER_SOCKET={layout.socket}" in result.stdout
 
 
 def test_missing_docker_socket_stops(layout: Layout) -> None:
@@ -217,7 +246,13 @@ def test_real_run_pulls_builds_from_the_commit_and_starts(layout: Layout) -> Non
     calls = layout.docker_calls()
     assert [c.split(" | ")[0].split()[-1] for c in calls] == ["build", "-d"]
     assert all(f"vault={vault} gid={gid} commit={commit}" in c for c in calls)
-    assert (layout.project / "components" / "broker_service" / ".local_assets" / "config").is_dir()
+    assert layout.config_dir.is_dir()
+    assert not (layout.project / "components" / "broker_service" / ".local_assets").exists()
+    env_lines = (layout.project / ".env").read_text().splitlines()
+    assert f"HOST_UID={os.getuid()}" in env_lines and f"HOST_GID={os.getgid()}" in env_lines
+    assert f"DOCKER_GID={gid}" in env_lines and f"AGENT_BROKER_VAULT={vault}" in env_lines
+    assert f"AGENT_BROKER_CONFIG_DIR={layout.config_dir}" in env_lines
+    assert f"AGENT_BROKER_DOCKER_SOCKET={layout.socket}" in env_lines
     assert stat.S_ISDIR(context.stat().st_mode)
 
 

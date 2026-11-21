@@ -33,7 +33,7 @@ import uuid
 from agent_broker_client import HttpBrokerClient, ReplyEvent, StateEvent, InvalidEvent, SessionGoneError
 
 async def main(username: str, password: str) -> None:
-    async with HttpBrokerClient("https://broker-host:38443", username, password, "voice") as broker:
+    async with HttpBrokerClient("https://broker.example:38443", username, password, "voice") as broker:
         agents = await broker.list_agents()
         session = await broker.create_session("claude", "my_repo")   # or broker.session("claude", known_id)
         await session.send_command(uuid.uuid4(), "Run the tests")

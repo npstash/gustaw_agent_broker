@@ -42,3 +42,6 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261117-07 Opus-5.5 ba1ac6c4bd5c The provider opencode sends only the state and the reply replay from the session log, then the live events
 - 20261117-08 Opus-5.5 f15d8f0daf47 Each agent has the configuration keys logging.levels.<component>; the level selects the log events of the component
 - 20261117-09 Opus-5.5 f15d8f0daf47 A command text that starts with / is a slash command of the agent; an unknown slash command gets a reply that says so
+- 20261120-01 Nestor cb09fc0815a3 The container runs as the user of update.sh, not as a fixed UID; HOME and the TLS scratch folder are tmpfs folders of that user
+- 20261120-02 Nestor cb09fc0815a3 The local configuration is in the XDG configuration folder of that user below gustaw/agent_broker, not in the clone
+- 20261120-03 Nestor cb09fc0815a3 update.sh writes the variables of compose.yaml into .env of the project folder; the operator values are in config.env of the configuration folder

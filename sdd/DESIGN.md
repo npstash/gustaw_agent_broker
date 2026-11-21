@@ -404,10 +404,11 @@ The vault is the repository `vault-agent_broker`.
 
 ## 9. Deployment
 
-- The broker runs as one Docker container on broker-host, with the host network.
+- The target environment: Ubuntu Server 26.04 LTS, Docker Engine with the rootful daemon.
+- The broker runs as one Docker container on the target host, with the host network.
 - The image is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) and the vault tool of maya-agent-kit (`tools/auth`). It holds no secret and no vault.
 - The image has the layout of a workspace (`/workspace/projects/gustaw/gustaw_agent_broker`, `/workspace/maya`, `/workspace/vaults/vault-agent_broker`), so the paths of `dependencies.txt` stay valid.
-- The container runs as UID 1000, not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`).
+- The container runs as the user of `update.sh` on the host (`HOST_UID`, `HOST_GID`), not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`). HOME and the scratch folder of the TLS key are `tmpfs` folders of that user.
 - The project has its own clone on the host, with the dependencies next to it or inside it. `update.sh` works on the repository that it is in:
   1. It checks that HEAD is on a branch and that the clone has no local changes. It pulls the current branch with `git pull --ff-only`. It does not switch the branch, so the clone can stay on a release branch.
   2. It checks that each dependency of `dependencies.txt` is available, with the lookup of the rule submodule-dependencies. It does not pull or change the dependencies.
@@ -415,7 +416,8 @@ The vault is the repository `vault-agent_broker`.
   4. It runs `docker compose up -d`: the container is made again from the new image.
 - A restart of the container does not update the code.
 - `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`.
-- Mounts: the Docker socket; the folder of the vault, read-write (the vault tool writes its access log); the folder `components/broker_service/.local_assets/config`, read-only, for the optional `local.yaml`. `update.sh` finds the folder of the vault and gives it to Compose in `AGENT_BROKER_VAULT`. The path is not fixed in `compose.yaml`.
+- Mounts: the Docker socket; the folder of the vault, read-write (the vault tool writes its access log); the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `components/broker_service/.local_assets/config` of the container, for the optional `local.yaml`. `update.sh` finds the folder of the vault and the configuration folder, and gives them to Compose in `AGENT_BROKER_VAULT` and `AGENT_BROKER_CONFIG_DIR`. No path is fixed in `compose.yaml`.
+- `update.sh` writes the variables of `compose.yaml` into `.env` of the project folder (not committed). Plain `docker compose` commands then work. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET. A variable of the environment replaces a value of `config.env`.
 - The clone key of the host clone must open the vault without a terminal (section 11).
 - The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. It is committed in `tls/server.crt`. Each client reads it from the submodule.
 
@@ -435,10 +437,10 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 - `update.sh` pulls the project and only checks the dependencies (`maya-agent-kit`, the vault). A newer project can need a newer dependency. The owner pulls the dependencies by hand. Open: `update.sh` pulls them too, or they become submodules of the project.
 - **MISSING:** the configuration values of OpenCode that `GET` and `PUT /agents/opencode/config` give.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
-- Not verified: the working directory of the OpenCode container on broker-host is its workspace folder.
+- Not verified: the working directory of the OpenCode container on the target host is its workspace folder.
 - The session log route of OpenCode is marked experimental.
-- Not verified: the broker with a real agent behind it. The build, the start, the login, the certificate and the event stream are verified on broker-host.
-- The clone key of the host must be a plain file that UID 1000 can read, because the container has no OS keyring. Verified on broker-host with such a key. Not verified: a key that the OS keyring protects.
+- Not verified: the broker with a real agent behind it. The build, the start, the login, the certificate and the event stream are verified in the target environment.
+- The clone key of the host must be a plain file that the user of the container can read, because the container has no OS keyring. Verified in the target environment with such a key. Not verified: a key that the OS keyring protects.
 
 ## 12. Default values
 
@@ -459,5 +461,5 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | DOCKER_SOCKET | `/var/run/docker.sock` | — | `docker.socket` | Path of the Docker socket |
 | LANGUAGES | `en`, `pl` | — | `language.languages` | Languages of the detection in the provider `opencode` |
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
-| CERT_NAMES | `broker-host`, `localhost`, `127.0.0.1`, `192.0.2.10`, `broker.example.net` | — | `cert.names` (component client) | Names in the certificate |
+| CERT_NAMES | `localhost`, `127.0.0.1`, and the names and addresses of the target host | — | `cert.names` (component client) | Names in the certificate |
 | CERT_VALIDITY | 10 | years | `cert.validity_years` (component client) | Validity of the certificate |

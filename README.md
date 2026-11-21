@@ -2,7 +2,7 @@
 
 One API for several coding agents. A client selects an agent and a session in each call.
 
-Status: the broker with the agent API is implemented. It runs on broker-host, with the agent `claude` behind it. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
+Status: the broker with the agent API is implemented. It runs on the target host, with the agent `claude` behind it. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
 
 ## SDD
 
@@ -46,8 +46,8 @@ First start:
 
 Update: run `./update.sh`. The script pulls the current branch of the clone. It does not switch the branch. It stops on a detached HEAD, on local changes, and when a dependency is missing. It builds the image from the committed code and runs `docker compose up -d`. `./update.sh --dry-run` prints the steps and changes nothing.
 
-Local configuration: write `components/broker_service/.local_assets/config/local.yaml`. Restart the container to apply it.
+Local configuration: write `local.yaml` into `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`. Restart the container to apply it. `config.env` in the same folder gives the operator values of `update.sh` (`AGENT_BROKER_DOCKER_SOCKET`). `update.sh` writes the variables of `compose.yaml` into `.env` of the project folder.
 
-Verified on broker-host (2026-11-18, commit `2cf1715`): the image build, the start of the container, the tests of each component, the login and the certificate. A session at the agent `claude` gave a reply to a command and was deleted. Not verified: the agent `opencode`.
+Verified in the target environment (Ubuntu Server 26.04 LTS; 2026-11-18, commit `2cf1715`): the image build, the start of the container, the tests of each component, the login and the certificate. A session at the agent `claude` gave a reply to a command and was deleted. Not verified: the agent `opencode`.
 
 Agent Broker is a submodule of the repository `the workspace`. It needs the repositories `maya-agent-kit` and `vault-agent_broker`. [dependencies.txt](dependencies.txt) gives their layouts.

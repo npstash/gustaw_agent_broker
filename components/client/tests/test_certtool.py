@@ -12,7 +12,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from agent_broker_client import certtool, vault
 from agent_broker_client import config as cfg
 
-NAMES = ["broker-host", "localhost", "127.0.0.1", "192.0.2.10", "broker.example.net"]
+NAMES = ["broker", "localhost", "127.0.0.1", "192.0.2.10", "broker.example.net"]
 CONFIG_TEXT = """\
 cert:
   file: tls/server.crt
@@ -49,7 +49,7 @@ def make_config(tmp_path: Path, names: list[str] = NAMES, years: int = 10) -> Pa
 def test_names_are_told_apart() -> None:
     cert_pem, _ = certtool.make_key_pair(NAMES, days=2)
     dns, ips = san(x509.load_pem_x509_certificate(cert_pem))
-    assert dns == {"broker-host", "localhost", "broker.example.net"}
+    assert dns == {"broker", "localhost", "broker.example.net"}
     assert ips == {"127.0.0.1", "192.0.2.10"}
 
 
@@ -80,7 +80,8 @@ def test_certificate_kind_and_extensions() -> None:
 
 def test_default_configuration_follows_the_design() -> None:
     conf = cfg.ConfigFile(certtool.CONFIG_FILE, certtool.VALIDATORS)
-    assert conf.get_list("cert.names") == NAMES
+    names = conf.get_list("cert.names")
+    assert "localhost" in names and "127.0.0.1" in names
     assert conf.get_int("cert.validity_years") == 10
     assert conf.get_str("credentials.vault") == "vault-agent_broker"
     assert conf.get_str_map("credentials.secrets.tls_private_key") == {

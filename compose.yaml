@@ -1,9 +1,12 @@
 # Docker Compose of the Agent Broker.
 # update.sh builds the image and runs this file. It sets these variables:
 #   AGENT_BROKER_VAULT   the folder of vault-agent_broker on the host (found with dependencies.txt)
+#   HOST_UID, HOST_GID   the user of update.sh on the host
 #   DOCKER_GID           the group ID of the Docker socket on the host
+#   AGENT_BROKER_CONFIG_DIR   the configuration folder on the host, for the optional local.yaml
 #   AGENT_BROKER_COMMIT, AGENT_BROKER_COMMIT_DATE, AGENT_BROKER_COMMIT_SUBJECT   the commit of the image
 # AGENT_BROKER_DOCKER_SOCKET (optional) is the path of the Docker socket on the host.
+# update.sh also writes these variables into .env, for plain docker compose commands.
 name: agent_broker
 
 services:
@@ -21,12 +24,16 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 20s
-    user: "1000:1000"
+    user: "${HOST_UID:?run update.sh}:${HOST_GID:?run update.sh}"
     group_add:
       - "${DOCKER_GID:?run update.sh}"
+    # HOME and the scratch folder of the TLS key. They belong to the user of the container.
+    tmpfs:
+      - /workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/home:uid=${HOST_UID},gid=${HOST_GID},mode=0700
+      - /workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/tls:uid=${HOST_UID},gid=${HOST_GID},mode=0700
     volumes:
       - ${AGENT_BROKER_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       # Read-write: the vault tool writes the access log of the vault.
       - ${AGENT_BROKER_VAULT:?run update.sh}:/workspace/vaults/vault-agent_broker
-      # The optional local configuration: local.yaml in this folder.
-      - ./components/broker_service/.local_assets/config:/workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/config:ro
+      # The optional local configuration: local.yaml in the configuration folder of the host.
+      - ${AGENT_BROKER_CONFIG_DIR:?run update.sh}:/workspace/projects/gustaw/gustaw_agent_broker/components/broker_service/.local_assets/config:ro

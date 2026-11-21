@@ -39,7 +39,7 @@ def _part(value: str) -> str:
 class HttpBrokerClient(BrokerClient):
     """The broker client.
 
-    ``url`` is the URL of the broker, e.g. ``https://broker-host:38443``. ``username`` and
+    ``url`` is the URL of the broker, e.g. ``https://broker.example:38443``. ``username`` and
     ``password`` are the login of the broker. ``cert_file`` is the certificate of the broker
     (the trust anchor). Make the object in a running event loop or outside of one; the
     connections open at the first call.

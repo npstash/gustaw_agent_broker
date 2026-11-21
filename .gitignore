@@ -5,6 +5,9 @@ venv/
 # Python bytecode and build metadata
 *.egg-info/
 
+# The variables of compose.yaml, written by update.sh
+.env
+
 # Generated and intermediate files
 .local_assets/
 
