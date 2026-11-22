@@ -13,6 +13,7 @@ CID = str(uuid.uuid4())
 SESSION: JsonObject = {
     "id": "ses_1", "agent": "claude", "client": "voice", "workspace": "x", "workspace_path": "/repo/x",
     "state": "idle", "title": "Chat", "created_at": "2026-11-16T10:00:00Z", "last_modified": "2026-11-16T10:05:00Z",
+    "model": "opus", "effort": "medium", "tools": {"allow": None, "deny": []},
 }
 AGENT: JsonObject = {
     "name": "claude", "provider": "agent_api", "container_state": "running", "agent_state": "ok", "version": "1.0",
@@ -52,13 +53,20 @@ VALID: dict[str, list[JsonValue]] = {
     "AgentResult": [{"agent": "claude", "container_state": "running"}, {"agent": "claude", "container_state": "exited"}],
     "AgentStatus": [{"uptime_s": 0, "version": "1.0", "open_sessions": 2}],
     "SessionCreateRequest": [
-        {"client": "voice", "workspace": "x"}, {"client": "voice", "workspace": ".", "force": True}],
+        {"client": "voice", "workspace": "x", "model": "opus"},
+        {"client": "voice", "workspace": ".", "force": True, "model": "sonnet", "effort": "high",
+         "tools": {"allow": ["WebSearch", "WebFetch"], "deny": []}}],
+    "ToolPolicy": [{"allow": None, "deny": []}, {"allow": [], "deny": ["Bash"]}, {"allow": ["webfetch"], "deny": []}],
+    "SessionSettingsRequest": [{"model": "sonnet"}, {"effort": "low"}, {"model": "opus", "effort": "max"}],
+    "ModelList": [{"models": [], "default": "opus"}, {"models": [{"id": "opus", "name": "Claude Opus"}], "default": "opus"}],
+    "EffortList": [{"efforts": ["auto"], "default": "auto"}, {"efforts": ["low", "medium"], "default": "medium"}],
     "Session": [SESSION, with_value(SESSION, "client", None), with_value(SESSION, "title", None)],
     "SessionList": [{"sessions": []}, {"sessions": [SESSION]}],
     "SessionResult": [{"session_state": "idle"}],
     "ErrorResponse": [
         {"error": error, "message": "text"} for error in (
-            "bad_request", "unauthorized", "not_found", "busy", "workspace_not_found", "agent_unavailable")],
+            "bad_request", "unauthorized", "not_found", "busy", "workspace_not_found", "agent_unavailable",
+            "invalid_setting", "unsupported_tools")],
     "StateEvent": [{**SCOPE, "state": "working"}],
     "StatusEvent": [{**SCOPE, "kind": "activity", "text": "Reading a file"}],
     "ReplyEvent": [{**SCOPE, "command_id": CID, "message": "Done", "language": "en"}],
@@ -102,9 +110,17 @@ INVALID: dict[str, list[JsonValue]] = {
         {"agent": "claude", "container_state": "stopped"}],
     "AgentStatus": [{"uptime_s": -1, "version": "1.0", "open_sessions": 2}, {"uptime_s": 0, "version": "1.0"}],
     "SessionCreateRequest": [
-        {"workspace": "x"}, {"client": "voice"}, {"client": "voice", "workspace": "x", "force": "yes"},
-        {"client": "", "workspace": "x"}],
+        {"workspace": "x", "model": "opus"}, {"client": "voice", "model": "opus"},
+        {"client": "voice", "workspace": "x", "force": "yes", "model": "opus"},
+        {"client": "", "workspace": "x", "model": "opus"}, {"client": "voice", "workspace": "x"},
+        {"client": "voice", "workspace": "x", "model": ""}, {"client": "voice", "workspace": "x", "model": "opus",
+                                                            "tools": {"allow": ["a"]}}],
+    "ToolPolicy": [{"allow": None}, {"deny": []}, {"allow": "all", "deny": []}, {"allow": ["a", "a"], "deny": []}],
+    "SessionSettingsRequest": [{}, {"model": ""}, {"model": "opus", "tools": None}],
+    "ModelList": [{"models": []}, {"models": [{"id": "opus"}], "default": "opus"}],
+    "EffortList": [{"efforts": [], "default": "auto"}, {"efforts": ["auto"]}],
     "Session": [
+        without(SESSION, "model"), with_value(SESSION, "effort", ""), without(SESSION, "tools"),
         without(SESSION, "agent"), with_value(SESSION, "state", "busy"), with_value(SESSION, "client", 1),
         without(SESSION, "title"), with_value(SESSION, "created_at", "2026-11-16T11:00:00+01:00"),
         with_value(SESSION, "last_modified", "16.11.2026 10:05")],

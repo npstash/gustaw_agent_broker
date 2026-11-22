@@ -36,13 +36,23 @@ class Agent:
             value: JsonValue = json.loads(text) if text else None
             return answer.status, value
 
-    async def new_session(self) -> str:
-        status, body = await self.call("POST", "/sessions", {"client": "contract", "workspace": self.workspace,
-                                                              "force": True})
+    async def default_model(self) -> str:
+        """The DEFAULT_MODEL of the agent, from GET /models."""
+        status, body = await self.call("GET", "/models")
+        expect(status == 200, f"GET /models gave {status}")
+        return str(checked("ModelList", body)["default"])
+
+    async def new_session(self, extra: JsonObject | None = None) -> JsonObject:
+        request: JsonObject = {"client": "contract", "workspace": self.workspace, "force": True,
+                               "model": await self.default_model()}
+        status, body = await self.call("POST", "/sessions", {**request, **(extra or {})})
         expect(status == 201, f"POST /sessions gave {status}, not 201")
         session = checked("Session", body)
         expect(session.get("state") == "idle", f"a new session has the state {session.get('state')}")
-        return str(session["id"])
+        return session
+
+    async def new_session_id(self) -> str:
+        return str((await self.new_session())["id"])
 
     async def first_event(self, session_id: str) -> tuple[str, JsonObject]:
         async with self.http.get(f"{self.base_url}/sessions/{session_id}/events") as answer:
@@ -84,7 +94,7 @@ async def status(agent: Agent) -> None:
 
 
 async def session_create_list_read(agent: Agent) -> None:
-    session_id = await agent.new_session()
+    session_id = await agent.new_session_id()
     code, body = await agent.call("GET", "/sessions")
     expect(code == 200, f"GET /sessions gave {code}")
     listed = checked("SessionList", body)
@@ -97,20 +107,21 @@ async def session_create_list_read(agent: Agent) -> None:
 
 
 async def nested_workspace(agent: Agent) -> None:
-    code, body = await agent.call("POST", "/sessions", {"client": "contract", "workspace": "a/b", "force": True})
+    code, body = await agent.call("POST", "/sessions", {"client": "contract", "workspace": "a/b", "force": True,
+                                                        "model": await agent.default_model()})
     expect(code == 400, f"a nested workspace gave {code}, not 400")
     checked("ErrorResponse", body)
 
 
 async def stream_starts_with_state(agent: Agent) -> None:
-    session_id = await agent.new_session()
+    session_id = await agent.new_session_id()
     event, body = await agent.first_event(session_id)
     expect(event == "state", f"the first event is {event}, not state")
     expect("agent" not in body, "an event of the agent API has the field agent")
 
 
 async def interrupt_with_no_command(agent: Agent) -> None:
-    session_id = await agent.new_session()
+    session_id = await agent.new_session_id()
     code, body = await agent.call("POST", f"/sessions/{session_id}/interrupt")
     expect(code == 200, f"an interrupt with no command gave {code}")
     result = checked("SessionResult", body)
@@ -118,7 +129,7 @@ async def interrupt_with_no_command(agent: Agent) -> None:
 
 
 async def duplicate_command(agent: Agent) -> None:
-    session_id = await agent.new_session()
+    session_id = await agent.new_session_id()
     command: JsonObject = {"id": str(uuid.uuid4()), "text": "contract", "mode": "text"}
     code, body = await agent.call("POST", f"/sessions/{session_id}/commands", command)
     expect(code == 202, f"a command gave {code}, not 202")
@@ -129,7 +140,7 @@ async def duplicate_command(agent: Agent) -> None:
 
 
 async def delete_session(agent: Agent) -> None:
-    session_id = await agent.new_session()
+    session_id = await agent.new_session_id()
     code, _ = await agent.call("DELETE", f"/sessions/{session_id}")
     expect(code == 204, f"DELETE gave {code}, not 204")
     code, body = await agent.call("GET", f"/sessions/{session_id}")
@@ -137,7 +148,45 @@ async def delete_session(agent: Agent) -> None:
     checked("ErrorResponse", body)
 
 
+async def models_and_efforts(agent: Agent) -> None:
+    code, body = await agent.call("GET", "/models")
+    expect(code == 200, f"GET /models gave {code}")
+    models = checked("ModelList", body)
+    ids = [m.get("id") for m in models["models"] if isinstance(m, dict)] if isinstance(models["models"], list) else []
+    expect(models["default"] in ids, "the default model is not in the list of models")
+    code, body = await agent.call("GET", "/efforts")
+    expect(code == 200, f"GET /efforts gave {code}")
+    efforts = checked("EffortList", body)
+    expect(isinstance(efforts["efforts"], list) and efforts["default"] in efforts["efforts"],
+           "the default effort is not in the list of efforts")
+
+
+async def session_settings(agent: Agent) -> None:
+    code, body = await agent.call("GET", "/efforts")
+    efforts = checked("EffortList", body)
+    session = await agent.new_session()
+    expect(session.get("model") == await agent.default_model(), "the session does not have the requested model")
+    expect(session.get("effort") == efforts["default"], "a session with no effort does not have the default effort")
+    expect(session.get("tools") == {"allow": None, "deny": []}, "a session with no tools does not have each tool")
+    code, body = await agent.call("PUT", f"/sessions/{session['id']}/settings", {"effort": efforts["default"]})
+    expect(code == 200, f"PUT /sessions/{{id}}/settings gave {code}")
+    checked("Session", body)
+    code, body = await agent.call("PUT", f"/sessions/{session['id']}/settings", {"effort": "no-such-effort"})
+    expect(code == 400, f"an unknown effort gave {code}, not 400")
+    expect(checked("ErrorResponse", body).get("error") == "invalid_setting", "an unknown effort is not invalid_setting")
+
+
+async def model_is_required(agent: Agent) -> None:
+    code, body = await agent.call("POST", "/sessions", {"client": "contract", "workspace": agent.workspace,
+                                                        "force": True})
+    expect(code == 400, f"a session with no model gave {code}, not 400")
+    checked("ErrorResponse", body)
+
+
 CASES: dict[str, Case] = {
+    "models_and_efforts": models_and_efforts,
+    "session_settings": session_settings,
+    "model_is_required": model_is_required,
     "status": status,
     "session_create_list_read": session_create_list_read,
     "nested_workspace": nested_workspace,

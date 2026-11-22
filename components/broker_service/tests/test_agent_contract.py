@@ -20,4 +20,4 @@ def test_fake_agent_passes_the_contract(tmp_path: Path) -> None:
 
     failed = asyncio.run(scenario())
     assert failed == {}, failed
-    assert len(CASES) == 7
+    assert len(CASES) == 10

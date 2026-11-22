@@ -95,6 +95,9 @@ class Api:
             web.put("/agents/{agent}/config/{key}", self.config_put),
             # allow_head=False: a HEAD request must not open a stream.
             web.get("/events", self.broker_events, allow_head=False),
+            web.get("/agents/{agent}/models", self.models),
+            web.get("/agents/{agent}/efforts", self.efforts),
+            web.put("/agents/{agent}/sessions/{id}/settings", self.session_settings),
             web.post("/agents/{agent}/sessions", self.create_session),
             web.get("/agents/{agent}/sessions", self.list_sessions),
             web.get("/agents/{agent}/sessions/{id}", self.get_session),
@@ -246,6 +249,17 @@ class Api:
         if answer.get("status") == "accepted" and isinstance(command_id, str):
             self.proxy.note_command(entry.name, session_id, command_id)
         return json_answer("CommandAccepted", answer, 202)
+
+    async def models(self, request: web.Request) -> web.Response:
+        return json_answer("ModelList", await self._entry(request).provider.list_models())
+
+    async def efforts(self, request: web.Request) -> web.Response:
+        return json_answer("EffortList", await self._entry(request).provider.list_efforts())
+
+    async def session_settings(self, request: web.Request) -> web.Response:
+        entry = self._entry(request)
+        body = await _body(request, "SessionSettingsRequest")
+        return json_answer("Session", await entry.provider.set_session_settings(request.match_info["id"], body))
 
     async def interrupt(self, request: web.Request) -> web.Response:
         entry = self._entry(request)

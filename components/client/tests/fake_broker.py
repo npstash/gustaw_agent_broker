@@ -42,11 +42,13 @@ def make_tls_files(folder: Path, names: list[str] | None = None) -> TlsFiles:
     return files
 
 
-def session_body(agent: str, session_id: str, client: str | None, workspace: str, state: str = "idle") -> JsonObject:
+def session_body(agent: str, session_id: str, client: str | None, workspace: str, state: str = "idle",
+                 model: str = "opus", effort: str = "medium", tools: JsonObject | None = None) -> JsonObject:
     return messages.validate("Session", {
         "id": session_id, "agent": agent, "client": client, "workspace": workspace,
         "workspace_path": f"/work/{workspace}", "state": state, "title": None,
-        "created_at": CREATED_AT, "last_modified": CREATED_AT})
+        "created_at": CREATED_AT, "last_modified": CREATED_AT, "model": model, "effort": effort,
+        "tools": tools if tools is not None else {"allow": None, "deny": []}})
 
 
 def error(status: int, code: str, text: str) -> web.Response:
@@ -105,6 +107,9 @@ class FakeBroker:
             web.get("/agents/{agent}/config/{key}", self._config_get),
             web.put("/agents/{agent}/config/{key}", self._config_set),
             web.get("/events", self._broker_events),
+            web.get("/agents/{agent}/models", self._models),
+            web.get("/agents/{agent}/efforts", self._efforts),
+            web.put("/agents/{agent}/sessions/{id}/settings", self._settings),
             web.post("/agents/{agent}/sessions", self._create),
             web.get("/agents/{agent}/sessions", self._list),
             web.get("/agents/{agent}/sessions/{id}", self._get),
@@ -130,10 +135,11 @@ class FakeBroker:
     # --- Control of the streams by a test ------------------------------------------
 
     def add_session(self, agent: str, client: str | None = "client-1", workspace: str = "x",
-                    state: str = "idle") -> str:
+                    state: str = "idle", model: str = "opus", effort: str = "medium",
+                    tools: JsonObject | None = None) -> str:
         self._next_id += 1
         session_id = f"ses_{self._next_id}"
-        self.sessions[session_id] = session_body(agent, session_id, client, workspace, state)
+        self.sessions[session_id] = session_body(agent, session_id, client, workspace, state, model, effort, tools)
         return session_id
 
     def open_streams(self, session_id: str) -> int:
@@ -233,8 +239,35 @@ class FakeBroker:
         if workspace not in self.workspaces and not body.get("force", False):
             return error(404, "workspace_not_found", f"no folder {workspace}")
         self.workspaces.add(workspace)
-        session_id = self.add_session(request.match_info["agent"], str(body["client"]), workspace)
+        tools = body.get("tools")
+        session_id = self.add_session(request.match_info["agent"], str(body["client"]), workspace,
+                                      model=str(body["model"]), effort=str(body.get("effort", "medium")),
+                                      tools=tools if isinstance(tools, dict) else None)
         return web.json_response(self.sessions[session_id], status=201)
+
+    async def _models(self, request: web.Request) -> web.Response:
+        return web.json_response(messages.validate("ModelList", {
+            "models": [{"id": "opus", "name": "Claude Opus"}, {"id": "sonnet", "name": "Claude Sonnet"}],
+            "default": "opus"}))
+
+    async def _efforts(self, request: web.Request) -> web.Response:
+        return web.json_response(messages.validate("EffortList", {"efforts": ["low", "medium", "high"],
+                                                                  "default": "medium"}))
+
+    async def _settings(self, request: web.Request) -> web.Response:
+        session = self._session(request)
+        if session is None:
+            return error(404, "not_found", "no session")
+        try:
+            body = messages.validate("SessionSettingsRequest", await request.json())
+        except messages.MessageError as exc:
+            return error(400, "bad_request", str(exc))
+        if session["state"] == "working":
+            return error(409, "busy", "a command runs")
+        for key in ("model", "effort"):
+            if key in body:
+                session[key] = body[key]
+        return web.json_response(session)
 
     async def _list(self, request: web.Request) -> web.Response:
         client = request.query.get("client")

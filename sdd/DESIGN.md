@@ -118,7 +118,10 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 | `GET /agents/{agent}/config/{key}` | `ConfigValue`: one value. Dotted key. |
 | `PUT /agents/{agent}/config/{key}` | Body `ConfigSetRequest`. `ConfigSetResult` with `applied`: `now` or `at_restart`. |
 | `GET /events` | Broker stream (SSE) for all agents. See "Streams". |
-| `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. An agent can lose a session that has no command yet when the agent restarts. Its ID then gives `404`. |
+| `GET /agents/{agent}/models` | `ModelList`: the models of the agent and its DEFAULT_MODEL. A client uses DEFAULT_MODEL as its starting value. See "Session settings". |
+| `GET /agents/{agent}/efforts` | `EffortList`: the efforts of the agent and its DEFAULT_EFFORT. See "Session settings". |
+| `POST /agents/{agent}/sessions` | Body `SessionCreateRequest`: `client` (required), `workspace` (required), `model` (required), `effort` (optional), `tools` (optional), `force` (optional, default `false`). Creates a session. Answer `201` `Session`. `404` `workspace_not_found` if the folder does not exist and `force` is `false`. `400` `invalid_setting` for a model or an effort that the agent does not have. `400` `unsupported_tools` for a tool policy that the agent cannot apply. An agent can lose a session that has no command yet when the agent restarts. Its ID then gives `404`. |
+| `PUT /agents/{agent}/sessions/{id}/settings` | Body `SessionSettingsRequest`: `model`, `effort`, or both. Changes the settings of this session only. Answer `Session`. `409` `busy` in the state `working`. `400` `invalid_setting` as for a new session. |
 | `GET /agents/{agent}/sessions?client={client}` | `SessionList`: the sessions of the agent that have this client ID. `client` is required. The broker reads all sessions from the agent and filters them. |
 | `GET /agents/{agent}/sessions/{id}` | `Session` with its current `state`. The broker reads it from the agent at each call. |
 | `DELETE /agents/{agent}/sessions/{id}` | Deletes the session at the agent. The agent removes the stored chat of the session and closes the session stream. Answer `204` with no body. |
@@ -134,6 +137,18 @@ HTTPS on BROKER_HOST (`0.0.0.0`), port BROKER_PORT (38443). Each request needs H
 - The field `agent` of a session is the name of the agent in the configuration of the broker. The broker writes it.
 - Any client can use any session ID. The client ID is not a security measure.
 - A client stores the ID of each session that it uses.
+
+**Session settings.** Each session has a model, an effort and a tool policy. The broker keeps none of them: the agent stores them with the session.
+
+- `model` is an ID from `GET /models` of the agent. It is required for a new session. No setting of an agent or of the broker gives a model to a session.
+- `effort` is a value from `GET /efforts`. A new session without it gets DEFAULT_EFFORT of the agent. An agent with no efforts gives the list `["auto"]`.
+- DEFAULT_MODEL and DEFAULT_EFFORT are values of each agent. A client uses them as its starting values. The client keeps its own choice. The agent design defines the values.
+- `PUT .../settings` changes the model or the effort of one session. The next command uses the new values. No other session changes.
+- `tools` is a `ToolPolicy`: `allow` (a list of tool names, or `null` for each tool of the agent) and `deny` (a list of tool names). A tool in `deny` is never available. Without `tools`: `allow` `null`, `deny` empty, which is each tool of the agent.
+- The tool policy is fixed for the life of the session. It cannot change.
+- Tool names and model IDs are the names of the agent. The broker does not translate them.
+- An agent that cannot apply a policy refuses it with `400` `unsupported_tools`. It never runs a session with more tools than the policy allows.
+- `Session` returns `model`, `effort` and `tools`.
 
 **Workspace.** `workspace` is a path relative to the workspace root of the agent.
 
@@ -200,7 +215,9 @@ An agent implements this API to work with the provider `agent_api`. HTTP on `127
 | `GET /status` | `AgentStatus`: uptime, version, number of open sessions. |
 | `GET /config`, `GET /config/{key}`, `PUT /config/{key}` | As in section 6.1.1. |
 | `GET /events` | Agent stream (SSE): `notice` with the kind `lifecycle`, and `log`. |
+| `GET /models`, `GET /efforts` | As `GET /agents/{agent}/models` and `GET /agents/{agent}/efforts`. |
 | `POST /sessions` | As `POST /agents/{agent}/sessions`. |
+| `PUT /sessions/{id}/settings` | As `PUT /agents/{agent}/sessions/{id}/settings`. |
 | `GET /sessions` | `SessionList` with all sessions of the agent. No filter. A session that another tool made has the client `null`. |
 | `GET /sessions/{id}`, `DELETE /sessions/{id}` | As in section 6.1.1. |
 | `GET /sessions/{id}/events` | Session stream, as in section 6.1.1. |
@@ -223,8 +240,8 @@ Rules for an agent:
 
 | Part | Interface |
 | --- | --- |
-| Broker client | Made with the broker URL, the login and a client ID. Lists the agents. Starts, stops and restarts an agent. Reads and sets the configuration of an agent. Gives the events of the broker stream. Lists the sessions of its client ID. Creates a session (workspace, `force`) and returns a session client. Returns a session client for a known session ID. Deletes a session. |
-| Session client | Sends a command. Sends an interrupt. Gives the events of the session stream. Closes. |
+| Broker client | Made with the broker URL, the login and a client ID. Lists the agents. Starts, stops and restarts an agent. Reads and sets the configuration of an agent. Gives the events of the broker stream. Lists the models and the efforts of an agent. Lists the sessions of its client ID. Creates a session (workspace, model, optional effort, optional tool policy, `force`) and returns a session client. Changes the settings of a session. Returns a session client for a known session ID. Deletes a session. |
+| Session client | Sends a command. Sends an interrupt. Changes the model or the effort of its session. Gives the events of the session stream. Closes. |
 
 - A session client holds one session stream. It connects again after a heartbeat timeout or a closed stream, until it is closed.
 - The session client and the broker client wait RECONNECT_INTERVAL (5 s) between two tries to connect.
@@ -260,7 +277,10 @@ The provider `opencode` implements the operations of section 6.1.1 with the Open
 
 | Broker operation | OpenCode |
 | --- | --- |
-| Create a session | `POST /api/session` with `location.directory` (the workspace path) and `metadata.client` (the client ID). |
+| List the models | The models of the providers in the configuration of OpenCode. The ID is `provider/model`. DEFAULT_MODEL is the model of the configuration (`model`). **MISSING:** the route that gives the providers and their models. |
+| List the efforts | No call. The list is `["auto"]`, and DEFAULT_EFFORT is `auto`. OpenCode has no effort for the broker. |
+| Create a session | `POST /api/session` with `location.directory` (the workspace path) and `metadata.client` (the client ID). The model and the tool profile go into `metadata` too. Then `POST /api/session/{id}/agent` with the agent of the tool profile ("Tool profiles"). |
+| Change the settings | The new model goes into `metadata` of the session. **MISSING:** the route that changes the metadata of a session, and how a prompt selects the model of the session. |
 | List sessions | `GET /api/session`, all pages. The client ID is `metadata.client`. |
 | Read a session | `GET /api/session/{id}`. |
 | Delete a session | `DELETE /api/session/{id}`. |
@@ -278,6 +298,17 @@ The provider `opencode` implements the operations of section 6.1.1 with the Open
 | `session.text.*`, `session.tool.*`, `session.step.*`, `session.retry.scheduled` | `status` |
 
 - The provider keeps no state. From the session log of OpenCode, it sends only the `state` and the reply replay of section 6.1.1, then the live events.
+
+**Tool profiles.** OpenCode cannot set the tools of one session, and it has no API that makes an agent. Each agent of OpenCode has permission rules. The deployment of OpenCode defines one agent for each tool policy that the broker supports:
+
+| Agent of OpenCode | Permission rules | Tool policy of the broker |
+| --- | --- | --- |
+| `broker-all` | allow each action | `allow` `null`, `deny` empty |
+| `broker-web` | deny each action, then allow `webfetch` and `websearch` | `allow` `webfetch`, `websearch`; `deny` empty |
+| `broker-none` | deny each action | `allow` empty, `deny` empty |
+
+- The provider finds the profile with the same tools as the policy. Each other policy gives `400` `unsupported_tools`.
+- The tool names are the action names of OpenCode, e.g. `webfetch`, `websearch`, `shell`, `edit`.
 - The provider follows the session states and the failures of section 6.1.1. **MISSING:** how it finds that OpenCode cannot continue a session (`stopped`).
 - The workspace root of OpenCode is the working directory of its container. The provider reads it from Docker at the start of the broker.
 - The provider checks the path of a workspace and creates a folder for `force` inside the container, through Docker.
@@ -350,6 +381,9 @@ Changes against the schema of voice client:
 | `AgentApiStateEvent`, `AgentApiStatusEvent`, `AgentApiReplyEvent`, `AgentApiNoticeEvent`, `AgentApiLogEvent` | New: the events of the agent API. The field `agent` is optional. |
 | `ErrorResponse` | New error values: `workspace_not_found`, `agent_unavailable`. |
 | `RestartResult`, `ServerStatus` | Removed. |
+| `SessionCreateRequest`, `Session` | New: `model` (required), `effort`, `tools` (`ToolPolicy`). `Session` requires all three. |
+| `ToolPolicy`, `SessionSettingsRequest`, `ModelList`, `EffortList` | New: see "Session settings" in section 6.1.1. |
+| `ErrorResponse` | New error values: `invalid_setting`, `unsupported_tools`. |
 | `CommandRequest`, `CommandAccepted`, `Config*`, `SessionResult`, `SessionState`, `Language` | No change. |
 
 - `created_at` and `last_modified` are ISO 8601 date-time strings in UTC (`format: date-time`).
@@ -469,3 +503,5 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
 | CERT_NAMES | `localhost`, `127.0.0.1`, and the names and addresses of the target host | — | `cert.names` (component client) | Names in the certificate |
 | CERT_VALIDITY | 10 | years | `cert.validity_years` (component client) | Validity of the certificate |
+| DEFAULT_MODEL | each agent defines it | — | — | Model in `ModelList`: the starting value of a client |
+| DEFAULT_EFFORT | each agent defines it; `auto` for the provider `opencode` | — | — | Effort of a new session that gives none |

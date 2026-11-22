@@ -11,9 +11,9 @@ from .errors import (AgentUnavailableError, BadRequestError, BrokerError, Broker
                      StreamQueueFullError, StreamTimeoutError, UnauthorizedError, WorkspaceNotFoundError)
 from .messages import MessageError
 from .models import (AgentInfo, AgentResult, AgentState, Applied, BrokerEvent, CommandAccepted, CommandMode,
-                     CommandStatus, ConfigSetResult, ConfigValue, ContainerState, ErrorCode, InvalidEvent,
-                     LogEvent, LogLevel, NoticeEvent, NoticeKind, Provider, ReplyEvent, Session, SessionEvent,
-                     SessionResult, SessionState, StateEvent, StatusEvent, StatusKind)
+                     CommandStatus, ConfigSetResult, ConfigValue, ContainerState, EffortList, ErrorCode, InvalidEvent,
+                     LogEvent, LogLevel, ModelInfo, ModelList, NoticeEvent, NoticeKind, Provider, ReplyEvent, Session,
+                     SessionEvent, SessionResult, SessionState, StateEvent, StatusEvent, StatusKind, ToolPolicy)
 from .stream import STREAM_QUEUE_LIMIT, ConnectionListener, ConnectionState
 from .tls import DEFAULT_CERT_FILE, client_context
 
@@ -26,5 +26,5 @@ __all__ = [
     "LogEvent", "LogLevel", "MessageError", "NotFoundError", "NoticeEvent", "NoticeKind", "Provider",
     "RECONNECT_INTERVAL_S", "REQUEST_TIMEOUT_S", "ReplyEvent", "Session", "SessionClient", "SessionEvent",
     "SessionGoneError", "SessionResult", "SessionState", "STREAM_QUEUE_LIMIT", "StateEvent", "StatusEvent",
-    "StatusKind", "StreamQueueFullError", "StreamTimeoutError", "UnauthorizedError", "WorkspaceNotFoundError", "client_context",
+    "StatusKind", "StreamQueueFullError", "EffortList", "ModelInfo", "ModelList", "ToolPolicy", "StreamTimeoutError", "UnauthorizedError", "WorkspaceNotFoundError", "client_context",
 ]

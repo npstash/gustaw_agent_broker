@@ -43,6 +43,10 @@ def error(status: int, code: str, text: str) -> web.Response:
     return web.json_response(messages.error_body(code, text), status=status)
 
 
+MODELS = ("opus", "sonnet")
+EFFORTS = ("low", "medium", "high")
+
+
 @dataclass
 class FakeAgent:
     """The state of the fake agent. The tests change it and read it."""
@@ -82,6 +86,9 @@ class FakeAgent:
             web.get("/config/{key}", self._config_get),
             web.put("/config/{key}", self._config_set),
             web.get("/events", self._agent_events),
+            web.get("/models", self._models),
+            web.get("/efforts", self._efforts),
+            web.put("/sessions/{id}/settings", self._settings),
             web.post("/sessions", self._create),
             web.get("/sessions", self._list),
             web.get("/sessions/{id}", self._get),
@@ -106,13 +113,15 @@ class FakeAgent:
 
     # --- Control by a test -------------------------------------------------------------
 
-    def add_session(self, client: str | None = "client-1", workspace: str = "x", state: str = "idle") -> str:
+    def add_session(self, client: str | None = "client-1", workspace: str = "x", state: str = "idle",
+                    model: str = "opus", effort: str = "medium", tools: JsonObject | None = None) -> str:
         self._next_id += 1
         session_id = f"ses_{self._next_id}"
         self.sessions[session_id] = {
             "id": session_id, "agent": OWN_NAME, "client": client, "workspace": workspace,
             "workspace_path": f"/work/{workspace}", "state": state, "title": None,
-            "created_at": CREATED_AT, "last_modified": CREATED_AT}
+            "created_at": CREATED_AT, "last_modified": CREATED_AT, "model": model, "effort": effort,
+            "tools": tools if tools is not None else {"allow": None, "deny": []}}
         return session_id
 
     def open_streams(self, session_id: str) -> int:
@@ -193,9 +202,37 @@ class FakeAgent:
             return error(400, "bad_request", "the workspace is outside the root")
         if workspace not in self.workspaces and not body.get("force", False):
             return error(404, "workspace_not_found", f"no folder {workspace}")
+        effort = str(body.get("effort", "medium"))
+        if body["model"] not in MODELS or effort not in EFFORTS:
+            return error(400, "invalid_setting", "unknown model or effort")
         self.workspaces.add(workspace)
-        session_id = self.add_session(str(body["client"]), workspace)
+        tools = body.get("tools")
+        session_id = self.add_session(str(body["client"]), workspace, model=str(body["model"]), effort=effort,
+                                      tools=tools if isinstance(tools, dict) else None)
         return web.json_response(self.sessions[session_id], status=201)
+
+    async def _models(self, request: web.Request) -> web.Response:
+        return web.json_response({"models": [{"id": m, "name": m.title()} for m in MODELS], "default": "opus"})
+
+    async def _efforts(self, request: web.Request) -> web.Response:
+        return web.json_response({"efforts": list(EFFORTS), "default": "medium"})
+
+    async def _settings(self, request: web.Request) -> web.Response:
+        session = self._session(request)
+        if session is None:
+            return error(404, "not_found", "no session")
+        try:
+            body = messages.validate("SessionSettingsRequest", await request.json())
+        except messages.MessageError as exc:
+            return error(400, "bad_request", str(exc))
+        if body.get("model", "opus") not in MODELS or body.get("effort", "medium") not in EFFORTS:
+            return error(400, "invalid_setting", "unknown model or effort")
+        if session["state"] == "working":
+            return error(409, "busy", "a command runs")
+        for key in ("model", "effort"):
+            if key in body:
+                session[key] = body[key]
+        return web.json_response(session)
 
     async def _list(self, request: web.Request) -> web.Response:
         sessions: list[JsonValue] = list(self.sessions.values())

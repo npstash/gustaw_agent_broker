@@ -20,7 +20,8 @@ from .errors import (BrokerError, BrokerTlsError, BrokerUnreachableError, Client
 from .jsontypes import JsonObject, JsonValue
 from .messages import MessageError
 from .models import (AgentInfo, AgentResult, BrokerEvent, CommandAccepted, CommandMode, ConfigSetResult,
-                     ConfigValue, InvalidEvent, Session, SessionEvent, SessionResult)
+                     ConfigValue, EffortList, InvalidEvent, ModelList, Session, SessionEvent, SessionResult,
+                     ToolPolicy)
 from .stream import ConnectionListener, ConnectionState, EventStream
 from .tls import DEFAULT_CERT_FILE, client_context
 
@@ -177,9 +178,20 @@ class HttpBrokerClient(BrokerClient):
         return await self.call("GET", f"/agents/{_part(agent)}/sessions", models.parse_session_list,
                                params={"client": self._client_id})
 
-    async def create_session(self, agent: str, workspace: str, force: bool = False, *,
+    async def list_models(self, agent: str) -> ModelList:
+        return await self.call("GET", f"/agents/{_part(agent)}/models", models.parse_model_list)
+
+    async def list_efforts(self, agent: str) -> EffortList:
+        return await self.call("GET", f"/agents/{_part(agent)}/efforts", models.parse_effort_list)
+
+    async def create_session(self, agent: str, workspace: str, model: str, effort: str | None = None,
+                             tools: ToolPolicy | None = None, force: bool = False, *,
                              on_connection: ConnectionListener | None = None) -> HttpSessionClient:
-        request: JsonObject = {"client": self._client_id, "workspace": workspace, "force": force}
+        request: JsonObject = {"client": self._client_id, "workspace": workspace, "force": force, "model": model}
+        if effort is not None:
+            request["effort"] = effort
+        if tools is not None:
+            request["tools"] = tools.to_json()
         body = messages.validate("SessionCreateRequest", request)
         created = await self.call("POST", f"/agents/{_part(agent)}/sessions", models.parse_session, body)
         # Session.agent is the name of the agent in the broker.
@@ -195,6 +207,17 @@ class HttpBrokerClient(BrokerClient):
 
     async def get_session(self, agent: str, session_id: str) -> Session:
         return await self.call("GET", f"/agents/{_part(agent)}/sessions/{_part(session_id)}", models.parse_session)
+
+    async def set_session_settings(self, agent: str, session_id: str, model: str | None = None,
+                                   effort: str | None = None) -> Session:
+        request: JsonObject = {}
+        if model is not None:
+            request["model"] = model
+        if effort is not None:
+            request["effort"] = effort
+        body = messages.validate("SessionSettingsRequest", request)
+        return await self.call("PUT", f"/agents/{_part(agent)}/sessions/{_part(session_id)}/settings",
+                               models.parse_session, body)
 
     async def delete_session(self, agent: str, session_id: str) -> None:
         # The answer is 204 with no body. The client accepts each 2xx answer.
@@ -255,6 +278,9 @@ class HttpSessionClient(SessionClient):
 
     async def interrupt(self) -> SessionResult:
         return await self._broker.call("POST", self._base + "/interrupt", models.parse_session_result)
+
+    async def set_settings(self, model: str | None = None, effort: str | None = None) -> Session:
+        return await self._broker.set_session_settings(self._agent, self._session_id, model, effort)
 
     async def events(self) -> AsyncIterator[SessionEvent | InvalidEvent]:
         async for item in self._stream.items():

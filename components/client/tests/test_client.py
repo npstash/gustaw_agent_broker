@@ -129,12 +129,35 @@ def test_config_operations(tls: TlsFiles) -> None:
     run(test, tls)
 
 
+def test_models_efforts_tools_and_settings(tls: TlsFiles) -> None:
+    async def test(broker: FakeBroker) -> None:
+        async with client(broker, tls) as bc:
+            models_ = await bc.list_models("claude")
+            assert models_.default == "opus" and [m.id for m in models_.models] == ["opus", "sonnet"]
+            efforts = await bc.list_efforts("claude")
+            assert efforts.default == "medium" and "high" in efforts.efforts
+            policy = abc_.ToolPolicy(allow=("WebSearch", "WebFetch"))
+            sc = await bc.create_session("claude", "x", "sonnet", "high", policy)
+            assert last_request(broker).body == {"client": "client-1", "workspace": "x", "force": False,
+                                                 "model": "sonnet", "effort": "high",
+                                                 "tools": {"allow": ["WebSearch", "WebFetch"], "deny": []}}
+            assert sc.created is not None and sc.created.tools == policy and sc.created.effort == "high"
+            changed = await sc.set_settings(model="opus")
+            assert last_request(broker).body == {"model": "opus"}
+            assert changed.model == "opus" and changed.effort == "high"
+            with pytest.raises(abc_.MessageError):
+                await sc.set_settings()
+            await sc.close()
+
+    run(test, tls)
+
+
 def test_session_operations(tls: TlsFiles) -> None:
     async def test(broker: FakeBroker) -> None:
         other = broker.add_session("claude", client="other-client")
         async with client(broker, tls) as bc:
-            sc = await bc.create_session("claude", "new", force=True)
-            assert last_request(broker).body == {"client": "client-1", "workspace": "new", "force": True}
+            sc = await bc.create_session("claude", "new", "opus", force=True)
+            assert last_request(broker).body == {"client": "client-1", "workspace": "new", "force": True, "model": "opus"}
             assert isinstance(sc, abc_.SessionClient)
             assert sc.agent == "claude" and sc.created is not None and sc.created.workspace == "new"
             session = await bc.get_session("claude", sc.session_id)
@@ -169,7 +192,7 @@ def test_invalid_input_is_not_sent(tls: TlsFiles) -> None:
             with pytest.raises(abc_.MessageError):
                 await sc.send_command("not-a-uuid", "hello")
             with pytest.raises(abc_.MessageError):
-                await bc.create_session("claude", "")
+                await bc.create_session("claude", "", "opus")
             assert all(r.path.endswith("/events") for r in broker.requests[count:])
     run(test, tls)
 
@@ -205,7 +228,7 @@ def test_workspace_not_found(tls: TlsFiles) -> None:
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
             with pytest.raises(abc_.WorkspaceNotFoundError) as info:
-                await bc.create_session("claude", "missing")
+                await bc.create_session("claude", "missing", "opus")
             assert isinstance(info.value, abc_.NotFoundError)
             assert info.value.error is abc_.ErrorCode.WORKSPACE_NOT_FOUND
             with pytest.raises(abc_.NotFoundError) as other:
@@ -281,7 +304,7 @@ def test_default_certificate_file_is_the_one_of_the_configuration() -> None:
 def test_session_stream_gives_state_first_then_live_events(tls: TlsFiles) -> None:
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
-            sc = await bc.create_session("claude", "x")
+            sc = await bc.create_session("claude", "x", "opus")
             items = sc.events()
             first = await next_item(items)
             assert first == abc_.StateEvent("claude", sc.session_id, abc_.SessionState.IDLE)
@@ -326,8 +349,8 @@ def test_several_session_clients_and_two_broker_clients(tls: TlsFiles) -> None:
     async def test(broker: FakeBroker) -> None:
         first = client(broker, tls, "client-a")
         second = client(broker, tls, "client-b")
-        sessions = [await first.create_session("claude", "x"), await first.create_session("claude", "x"),
-                    await second.create_session("claude", "x")]
+        sessions = [await first.create_session("claude", "x", "opus"), await first.create_session("claude", "x", "opus"),
+                    await second.create_session("claude", "x", "opus")]
         iterators = [s.events() for s in sessions]
         for session, items in zip(sessions, iterators):
             assert isinstance(await next_item(items), abc_.StateEvent)
@@ -429,7 +452,7 @@ def test_404_for_a_stream_is_not_retried(tls: TlsFiles) -> None:
 def test_deleted_session_ends_the_stream(tls: TlsFiles) -> None:
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
-            sc = await bc.create_session("claude", "x")
+            sc = await bc.create_session("claude", "x", "opus")
             items = sc.events()
             assert isinstance(await next_item(items), abc_.StateEvent)
             await bc.delete_session("claude", sc.session_id)
@@ -484,10 +507,10 @@ def test_change_of_session(tls: TlsFiles) -> None:
     """the new session client gets its state; then the program closes the old one."""
     async def test(broker: FakeBroker) -> None:
         async with client(broker, tls) as bc:
-            old = await bc.create_session("claude", "x")
+            old = await bc.create_session("claude", "x", "opus")
             old_items = old.events()
             assert isinstance(await next_item(old_items), abc_.StateEvent)
-            new = await bc.create_session("claude", ".")
+            new = await bc.create_session("claude", ".", "opus")
             assert isinstance(await next_item(new.events()), abc_.StateEvent)
             await old.close()
             await until(lambda: broker.open_streams(old.session_id) == 0)

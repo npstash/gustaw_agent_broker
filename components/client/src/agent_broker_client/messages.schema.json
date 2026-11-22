@@ -246,11 +246,134 @@
           "type": "boolean",
           "default": false,
           "description": "Create a workspace folder that does not exist"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A model ID of the agent (GET /models)"
+        },
+        "effort": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An effort of the agent (GET /efforts). Without it: the default effort of the agent"
+        },
+        "tools": {
+          "$ref": "#/$defs/ToolPolicy",
+          "description": "Without it: each tool of the agent. Fixed for the life of the session"
         }
       },
       "required": [
         "client",
-        "workspace"
+        "workspace",
+        "model"
+      ],
+      "additionalProperties": false
+    },
+    "ToolPolicy": {
+      "type": "object",
+      "description": "The tools of a session. Tool names of the agent. allow null: each tool of the agent. deny wins over allow.",
+      "properties": {
+        "allow": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            }
+          ]
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "allow",
+        "deny"
+      ],
+      "additionalProperties": false
+    },
+    "SessionSettingsRequest": {
+      "type": "object",
+      "description": "A change of the model or the effort of one session",
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effort": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "ModelList": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "DEFAULT_MODEL of the agent: the starting value of a client"
+        }
+      },
+      "required": [
+        "models",
+        "default"
+      ],
+      "additionalProperties": false
+    },
+    "EffortList": {
+      "type": "object",
+      "properties": {
+        "efforts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "DEFAULT_EFFORT of the agent: the effort of a session that gives none"
+        }
+      },
+      "required": [
+        "efforts",
+        "default"
       ],
       "additionalProperties": false
     },
@@ -295,6 +418,17 @@
         },
         "last_modified": {
           "$ref": "#/$defs/UtcDateTime"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effort": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools": {
+          "$ref": "#/$defs/ToolPolicy"
         }
       },
       "required": [
@@ -306,7 +440,10 @@
         "state",
         "title",
         "created_at",
-        "last_modified"
+        "last_modified",
+        "model",
+        "effort",
+        "tools"
       ],
       "additionalProperties": false
     },
@@ -347,7 +484,9 @@
             "not_found",
             "busy",
             "workspace_not_found",
-            "agent_unavailable"
+            "agent_unavailable",
+            "invalid_setting",
+            "unsupported_tools"
           ]
         },
         "message": {

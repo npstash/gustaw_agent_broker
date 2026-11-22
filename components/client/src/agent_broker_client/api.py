@@ -14,7 +14,8 @@ from typing import Self
 from .errors import BrokerError
 from .jsontypes import JsonValue
 from .models import (AgentInfo, AgentResult, BrokerEvent, CommandAccepted, CommandMode, ConfigSetResult,
-                     ConfigValue, InvalidEvent, Session, SessionEvent, SessionResult)
+                     ConfigValue, EffortList, InvalidEvent, ModelList, Session, SessionEvent, SessionResult,
+                     ToolPolicy)
 from .stream import ConnectionListener, ConnectionState
 
 
@@ -54,6 +55,10 @@ class SessionClient(ABC):
     @abstractmethod
     async def interrupt(self) -> SessionResult:
         """Stop the command that runs."""
+
+    @abstractmethod
+    async def set_settings(self, model: str | None = None, effort: str | None = None) -> Session:
+        """Change the model or the effort of this session. Raise BusyError if a command runs."""
 
     @abstractmethod
     def events(self) -> AsyncIterator[SessionEvent | InvalidEvent]:
@@ -143,10 +148,20 @@ class BrokerClient(ABC):
         """The sessions of the agent that have the client ID of this client."""
 
     @abstractmethod
-    async def create_session(self, agent: str, workspace: str, force: bool = False, *,
-                             on_connection: ConnectionListener | None = None) -> SessionClient:
-        """Create a session and return its session client.
+    async def list_models(self, agent: str) -> ModelList:
+        """The models of the agent, and its DEFAULT_MODEL: the starting value of a client."""
 
+    @abstractmethod
+    async def list_efforts(self, agent: str) -> EffortList:
+        """The efforts of the agent, and its DEFAULT_EFFORT."""
+
+    @abstractmethod
+    async def create_session(self, agent: str, workspace: str, model: str, effort: str | None = None,
+                             tools: ToolPolicy | None = None, force: bool = False, *,
+                             on_connection: ConnectionListener | None = None) -> SessionClient:
+        """Create a session with a model, and return its session client.
+
+        Without ``effort``: the DEFAULT_EFFORT of the agent. Without ``tools``: each tool of the agent.
         Raise WorkspaceNotFoundError if the folder does not exist and ``force`` is false.
         """
 
@@ -158,6 +173,11 @@ class BrokerClient(ABC):
     @abstractmethod
     async def get_session(self, agent: str, session_id: str) -> Session:
         """Read one session with its current state."""
+
+    @abstractmethod
+    async def set_session_settings(self, agent: str, session_id: str, model: str | None = None,
+                                   effort: str | None = None) -> Session:
+        """Change the model or the effort of a session. Raise BusyError if a command runs."""
 
     @abstractmethod
     async def delete_session(self, agent: str, session_id: str) -> None:

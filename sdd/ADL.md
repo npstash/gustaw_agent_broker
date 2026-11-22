@@ -49,3 +49,10 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261121-02 Nestor 3ab720748196 The service gets its secrets through secrets_proxy: from the vault if credentials.vault is set, else from environment variables; the default configuration names no vault
 - 20261121-03 Nestor 3ab720748196 HOME is the tmpfs /home/gustaw/agent_broker; the configuration folder is mounted read-only at its XDG path below HOME
 - 20261121-04 Nestor 3ab720748196 prepare.sh writes the deploy folder ${HOME}/containers/agent_broker; update.sh builds and tags the image, then runs prepare.sh and docker compose up -d; --no-up skips the last step
+- 20261122-01 Nestor 0807b1cf1751 A session has a model, an effort and a tool policy; the agent stores them with the session, and the broker stores none of them
+- 20261122-02 Nestor 0807b1cf1751 The model is required when a session is created; no setting of an agent or of the broker gives a model to a session; a client keeps its own choice and starts with DEFAULT_MODEL of the agent
+- 20261122-03 Nestor 0807b1cf1751 The effort is optional; a session without it gets DEFAULT_EFFORT of the agent; an agent without efforts gives only auto
+- 20261122-04 Nestor 0807b1cf1751 GET /models and GET /efforts list the values of an agent with its defaults; PUT .../settings changes the model or the effort of one session
+- 20261122-05 Nestor 0807b1cf1751 The tool policy has an allowlist and a denylist with the tool names of the agent; it is fixed for the life of the session; the default is each tool
+- 20261122-06 Nestor 0807b1cf1751 The provider opencode maps a tool policy to a predefined agent profile of OpenCode; a policy without a profile gives 400 unsupported_tools
+- 20261122-07 Opus-5.5 0807b1cf1751 Model IDs and tool names are the names of the agent; the broker does not translate them

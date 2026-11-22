@@ -198,12 +198,36 @@ def test_config_operations(in_tmp: Path) -> None:
 
 # --- Sessions --------------------------------------------------------------------------------
 
+def test_models_efforts_and_settings_pass_through(in_tmp: Path) -> None:
+    async def test(rig: Rig) -> None:
+        async with rig.client() as bc:
+            models = await bc.list_models("claude")
+            assert models.default == "opus" and [m.id for m in models.models] == ["opus", "sonnet"]
+            efforts = await bc.list_efforts("claude")
+            assert efforts.default == "medium" and efforts.efforts == ("low", "medium", "high")
+            policy = abc_.ToolPolicy(allow=("WebSearch",), deny=("Bash",))
+            sc = await bc.create_session("claude", "x", "sonnet", tools=policy, force=True)
+            assert sc.created is not None and sc.created.agent == "claude"
+            assert sc.created.model == "sonnet" and sc.created.effort == "medium" and sc.created.tools == policy
+            changed = await sc.set_settings(effort="high")
+            assert changed.effort == "high" and changed.model == "sonnet" and changed.agent == "claude"
+            with pytest.raises(abc_.BadRequestError) as info:
+                await sc.set_settings(model="gpt")
+            assert info.value.error is abc_.ErrorCode.INVALID_SETTING
+            rig.agent.sessions[sc.session_id]["state"] = "working"
+            with pytest.raises(abc_.BusyError):
+                await sc.set_settings(model="opus")
+            await sc.close()
+
+    run(test, in_tmp)
+
+
 def test_session_operations(in_tmp: Path) -> None:
     async def test(rig: Rig) -> None:
         other = rig.agent.add_session(client="client-2")
         rig.agent.add_session(client=None)   # a session that another tool made
         async with rig.client() as bc:
-            sc = await bc.create_session("claude", "/x")
+            sc = await bc.create_session("claude", "/x", "opus")
             assert sc.created is not None
             assert (sc.created.agent, sc.created.client, sc.created.workspace) == ("claude", "client-1", "x")
             session = await bc.get_session("claude", sc.session_id)
@@ -238,12 +262,12 @@ def test_workspace_errors_pass_through(in_tmp: Path) -> None:
     async def test(rig: Rig) -> None:
         async with rig.client() as bc:
             with pytest.raises(abc_.WorkspaceNotFoundError) as caught:
-                await bc.create_session("claude", "new_folder")
+                await bc.create_session("claude", "new_folder", "opus")
             assert caught.value.status == 404 and caught.value.error is abc_.ErrorCode.WORKSPACE_NOT_FOUND
-            sc = await bc.create_session("claude", "new_folder", force=True)
+            sc = await bc.create_session("claude", "new_folder", "opus", force=True)
             assert sc.created is not None and sc.created.workspace == "new_folder"
             with pytest.raises(abc_.BadRequestError):
-                await bc.create_session("claude", "../outside")
+                await bc.create_session("claude", "../outside", "opus")
             await sc.close()
     run(test, in_tmp)
 
@@ -311,7 +335,7 @@ def test_agent_that_is_down_gives_503(in_tmp: Path) -> None:
             assert caught.value.status == 503 and caught.value.error is abc_.ErrorCode.AGENT_UNAVAILABLE
             sc = bc.session("claude", session_id)
             for call in (sc.send_command(uuid.uuid4(), "x"), sc.interrupt(), bc.get_config("claude"),
-                         bc.get_session("claude", session_id), bc.create_session("claude", "x")):
+                         bc.get_session("claude", session_id), bc.create_session("claude", "x", "opus")):
                 with pytest.raises(abc_.AgentUnavailableError):
                     await call
             await until(lambda: isinstance(sc.last_error, abc_.AgentUnavailableError))

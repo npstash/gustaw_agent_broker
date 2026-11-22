@@ -174,6 +174,16 @@ class AgentApiProvider(AgentProvider):
         answer = await self._call("PUT", f"/config/{_part(key)}", body={"value": value})
         return _checked("ConfigSetResult", answer, f"{self._agent}: config")
 
+    async def list_models(self) -> JsonObject:
+        return _checked("ModelList", await self._call("GET", "/models"), f"{self._agent}: models")
+
+    async def list_efforts(self) -> JsonObject:
+        return _checked("EffortList", await self._call("GET", "/efforts"), f"{self._agent}: efforts")
+
+    async def set_session_settings(self, session_id: str, request: JsonObject) -> JsonObject:
+        answer = await self._call("PUT", f"/sessions/{_part(session_id)}/settings", body=request)
+        return self._session_body(answer, f"{self._agent}: session settings")
+
     async def create_session(self, request: JsonObject) -> JsonObject:
         answer = await self._call("POST", "/sessions", body=request, ok=(200, 201))
         return self._session_body(answer, f"{self._agent}: create session")

@@ -65,6 +65,18 @@ class AgentProvider(ABC):
         """``ConfigSetResult``."""
 
     @abstractmethod
+    async def list_models(self) -> JsonObject:
+        """``ModelList``: the models of the agent and its DEFAULT_MODEL."""
+
+    @abstractmethod
+    async def list_efforts(self) -> JsonObject:
+        """``EffortList``: the efforts of the agent and its DEFAULT_EFFORT."""
+
+    @abstractmethod
+    async def set_session_settings(self, session_id: str, request: JsonObject) -> JsonObject:
+        """Change the model or the effort of a session. ``Session`` with the name of the agent in the broker."""
+
+    @abstractmethod
     async def create_session(self, request: JsonObject) -> JsonObject:
         """Create a session from a checked ``SessionCreateRequest``. Give the ``Session``."""
 

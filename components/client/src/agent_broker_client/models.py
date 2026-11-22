@@ -64,6 +64,8 @@ class ErrorCode(enum.StrEnum):
     BUSY = "busy"
     WORKSPACE_NOT_FOUND = "workspace_not_found"
     AGENT_UNAVAILABLE = "agent_unavailable"
+    INVALID_SETTING = "invalid_setting"
+    UNSUPPORTED_TOOLS = "unsupported_tools"
 
 
 class StatusKind(enum.StrEnum):
@@ -113,6 +115,17 @@ class ConfigSetResult:
 
 
 @dataclass(frozen=True)
+class ToolPolicy:
+    """The tools of a session, by the tool names of the agent. allow None: each tool. deny wins over allow."""
+
+    allow: tuple[str, ...] | None = None
+    deny: tuple[str, ...] = ()
+
+    def to_json(self) -> JsonObject:
+        return {"allow": list(self.allow) if self.allow is not None else None, "deny": list(self.deny)}
+
+
+@dataclass(frozen=True)
 class Session:
     id: str
     agent: str
@@ -123,6 +136,27 @@ class Session:
     title: str | None
     created_at: datetime.datetime
     last_modified: datetime.datetime
+    model: str
+    effort: str
+    tools: ToolPolicy
+
+
+@dataclass(frozen=True)
+class ModelInfo:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True)
+class ModelList:
+    models: tuple[ModelInfo, ...]
+    default: str  # DEFAULT_MODEL of the agent: the starting value of a client
+
+
+@dataclass(frozen=True)
+class EffortList:
+    efforts: tuple[str, ...]
+    default: str  # DEFAULT_EFFORT of the agent: the effort of a session that gives none
 
 
 @dataclass(frozen=True)
@@ -234,12 +268,26 @@ def _agent(item: JsonObject) -> AgentInfo:
         agent_state=AgentState(_str(item, "agent_state")), version=_str(item, "version"))
 
 
+def _names(value: JsonValue, key: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise MessageError(f"{key}: not a list of strings")
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def _tools(item: JsonObject) -> ToolPolicy:
+    tools = _object("tools", item.get("tools"))
+    allow = tools.get("allow")
+    return ToolPolicy(allow=None if allow is None else _names(allow, "tools.allow"),
+                      deny=_names(tools.get("deny"), "tools.deny"))
+
+
 def _session(item: JsonObject) -> Session:
     return Session(
         id=_str(item, "id"), agent=_str(item, "agent"), client=_opt_str(item, "client"),
         workspace=_str(item, "workspace"), workspace_path=_str(item, "workspace_path"),
         state=SessionState(_str(item, "state")), title=_opt_str(item, "title"),
-        created_at=_time(item, "created_at"), last_modified=_time(item, "last_modified"))
+        created_at=_time(item, "created_at"), last_modified=_time(item, "last_modified"),
+        model=_str(item, "model"), effort=_str(item, "effort"), tools=_tools(item))
 
 
 def _items(body: JsonObject, key: str) -> list[JsonObject]:
@@ -279,6 +327,17 @@ def parse_session(body: JsonValue) -> Session:
 
 def parse_session_list(body: JsonValue) -> list[Session]:
     return [_session(item) for item in _items(_checked("SessionList", body), "sessions")]
+
+
+def parse_model_list(body: JsonValue) -> ModelList:
+    checked = _checked("ModelList", body)
+    return ModelList(models=tuple(ModelInfo(id=_str(item, "id"), name=_str(item, "name"))
+                                  for item in _items(checked, "models")), default=_str(checked, "default"))
+
+
+def parse_effort_list(body: JsonValue) -> EffortList:
+    checked = _checked("EffortList", body)
+    return EffortList(efforts=_names(checked.get("efforts"), "efforts"), default=_str(checked, "default"))
 
 
 def parse_command_accepted(body: JsonValue) -> CommandAccepted:
