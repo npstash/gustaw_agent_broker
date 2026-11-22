@@ -9,5 +9,6 @@
 
 [vault-agent_broker]
 ../../../vaults/vault-agent_broker
+../vaults/vault-agent_broker
 ../vault-agent_broker
 ./vault-agent_broker
