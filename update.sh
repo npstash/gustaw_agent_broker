@@ -2,6 +2,7 @@
 # Update the Agent Broker on the host. Run it in the clone of the project.
 #   update.sh [--override FILE]    pull the current branch, build the image from the committed code, run prepare.sh, start the container
 #   update.sh --no-up ...          do all steps except "docker compose up -d"
+#   update.sh --pull ...           pull the newest base image for the build (fixes of the operating system)
 #   update.sh --dry-run ...        print the steps; run no git command and no Docker command that changes something
 # The script does not switch the branch. It never prints a secret. It stops at the first error with a non-zero exit code.
 # prepare.sh gives the operator values of config.env.
@@ -10,15 +11,16 @@ set -euo pipefail
 SERVICE="agent_broker"
 
 main() {
-    local dry=0 up=1 project step=0
+    local dry=0 up=1 pull=0 project step=0
     local -a prepare_args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dry-run) dry=1; prepare_args+=("--dry-run"); shift ;;
             --no-up) up=0; shift ;;
+            --pull) pull=1; shift ;;
             --override) [[ $# -ge 2 ]] || { echo "update: --override needs a file" >&2; return 2; }
                 prepare_args+=("--override" "$(realpath "$2")"); shift 2 ;;
-            *) echo "usage: update.sh [--dry-run] [--no-up] [--override FILE]" >&2; return 2 ;;
+            *) echo "usage: update.sh [--dry-run] [--no-up] [--pull] [--override FILE]" >&2; return 2 ;;
         esac
     done
     project="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,7 +58,9 @@ main() {
         # One fixed time for all files: Docker then reuses the layers of files that did not change.
         find "$context" -exec touch -h -d @0 {} +
     fi
-    act docker build -t "$SERVICE:$commit" -t "$SERVICE:latest" \
+    local -a build_args=()
+    [[ $pull -eq 0 ]] || build_args+=("--pull")
+    act docker build "${build_args[@]}" -t "$SERVICE:$commit" -t "$SERVICE:latest" \
         --build-arg "AGENT_BROKER_COMMIT=$commit" \
         --build-arg "AGENT_BROKER_COMMIT_DATE=$(git_ log -1 --format=%cI)" \
         --build-arg "AGENT_BROKER_COMMIT_SUBJECT=$(git_ log -1 --format=%s)" \
