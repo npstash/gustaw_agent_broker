@@ -18,7 +18,8 @@ def test_settings_of_the_default_configuration() -> None:
         "0.0.0.0", 38443, 15.0, 100, "/var/run/docker.sock")
     assert values.agents == (
         AgentSettings("claude", "agent_api", "http://127.0.0.1:38444", "claude_code_server", enabled=True),
-        AgentSettings("opencode", "opencode", "http://127.0.0.1:4096", "opencode", enabled=False))
+        AgentSettings("opencode", "opencode", "http://127.0.0.1:4096", "opencode", enabled=False,
+                      workspace_root="/home/opencode/workspace"))
     assert values.log_level == "INFO"
     assert values.cert_file == (settings.PROJECT.parent / "client" / "tls" / "server.crt").resolve()
     assert values.reconnect_interval == 5.0
@@ -50,7 +51,7 @@ def test_opencode_agent_is_skipped_with_a_warning(caplog: pytest.LogCaptureFixtu
     assert [e.name for e in built.entries] == ["claude"]
     assert isinstance(built.entries[0].provider, AgentApiProvider)
     assert built.get("opencode") is None
-    assert any("opencode is not implemented" in r.getMessage() for r in caplog.records)
+    assert any("opencode is not available" in r.getMessage() for r in caplog.records)
 
 
 def test_credentials_match() -> None:
@@ -80,7 +81,8 @@ def test_local_file_can_change_each_value_of_the_two_agents(tmp_path: Path) -> N
                      "  claude:\n    enabled: false\n    provider: opencode\n", encoding="utf-8")
     claude, opencode = settings.from_config(settings.load(local_path=local)).agents
     assert claude == AgentSettings("claude", "opencode", "http://127.0.0.1:38444", "claude_code_server", enabled=False)
-    assert opencode == AgentSettings("opencode", "opencode", "http://127.0.0.1:9", "oc", enabled=True)
+    assert opencode == AgentSettings("opencode", "opencode", "http://127.0.0.1:9", "oc", enabled=True,
+                                     workspace_root="/home/opencode/workspace")
 
 
 def test_local_file_cannot_add_an_agent(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -102,7 +104,8 @@ def test_enabled_must_be_true_or_false(tmp_path: Path) -> None:
 
 def test_disabled_agent_is_not_in_the_router_and_gives_no_warning(caplog: pytest.LogCaptureFixture) -> None:
     conf = Settings(agents=(AgentSettings("claude", "agent_api", "http://127.0.0.1:1", "c1", enabled=False),
-                            AgentSettings("opencode", "opencode", "http://127.0.0.1:2", "c2", enabled=False)))
+                            AgentSettings("opencode", "opencode", "http://127.0.0.1:2", "c2", enabled=False,
+                                          workspace_root="/home/opencode/workspace")))
     with caplog.at_level(logging.WARNING, logger="agent_broker"):
         built = router.build(conf)
     assert built.entries == [] and built.get("claude") is None

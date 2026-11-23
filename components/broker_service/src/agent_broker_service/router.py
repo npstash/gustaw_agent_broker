@@ -9,6 +9,8 @@ from agent_broker_client.models import Provider
 
 from . import logs
 from .agent_api import AgentApiProvider
+from .language import detector
+from .opencode import OpencodeProvider
 from .provider import AgentProvider
 from .settings import AgentSettings, Settings
 
@@ -21,8 +23,21 @@ def _agent_api(agent: AgentSettings, settings: Settings) -> AgentProvider:
     return AgentApiProvider(agent.name, agent.url, settings.agent_request_timeout)
 
 
-# The implemented providers. The provider opencode is not implemented yet.
-FACTORIES: dict[Provider, ProviderFactory] = {Provider.AGENT_API: _agent_api}
+def factories(opencode_password: str | None = None) -> dict[Provider, ProviderFactory]:
+    """The factories of the providers. The provider opencode needs the password of OpenCode."""
+    made: dict[Provider, ProviderFactory] = {Provider.AGENT_API: _agent_api}
+    if opencode_password is not None:
+        password = opencode_password
+
+        def _opencode(agent: AgentSettings, settings: Settings) -> AgentProvider:
+            return OpencodeProvider(agent.name, agent.url, password, settings.agent_request_timeout,
+                                    agent.workspace_root or "/home/opencode/workspace",
+                                    detector(settings.languages, settings.language_threshold), settings.reply_replay)
+        made[Provider.OPENCODE] = _opencode
+    return made
+
+
+FACTORIES: dict[Provider, ProviderFactory] = factories()
 
 
 @dataclass(frozen=True)
@@ -51,7 +66,8 @@ def build(settings: Settings, factories: Mapping[Provider, ProviderFactory] = FA
 
     A disabled agent is not served: it is not in the router, so a call for it gives 404.
     An unknown provider name is a start error (ConfigError). An agent with a known provider
-    that is not implemented is skipped with a WARNING, so that the other agents stay usable.
+    that has no factory (e.g. opencode without its password) is skipped with a WARNING, so that the other agents
+    stay usable.
     """
     entries: list[AgentEntry] = []
     for agent in settings.agents:
@@ -64,7 +80,8 @@ def build(settings: Settings, factories: Mapping[Provider, ProviderFactory] = FA
             raise ConfigError(f"the agent {agent.name} has the unknown provider {agent.provider}") from None
         factory = factories.get(provider)
         if factory is None:
-            log.warning("The provider %s is not implemented. The agent %s is not available.", provider.value, agent.name)
+            log.warning("The provider %s is not available: no password or not implemented. The agent %s is not "
+                        "available.", provider.value, agent.name)
             continue
         entries.append(AgentEntry(agent.name, provider, agent.container, factory(agent, settings)))
     return Router(entries)

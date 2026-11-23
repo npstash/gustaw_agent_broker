@@ -56,3 +56,7 @@ The commit ID of each entry below is the last commit of voice client at the time
 - 20261122-05 Nestor 0807b1cf1751 The tool policy has an allowlist and a denylist with the tool names of the agent; it is fixed for the life of the session; the default is each tool
 - 20261122-06 Nestor 0807b1cf1751 The provider opencode maps a tool policy to a predefined agent profile of OpenCode; a policy without a profile gives 400 unsupported_tools
 - 20261122-07 Opus-5.5 0807b1cf1751 Model IDs and tool names are the names of the agent; the broker does not translate them
+- 20261123-01 Nestor eab17763373c The provider opencode maps a tool policy to permission rules of the session at OpenCode; it needs no agent profiles
+- 20261123-02 Nestor eab17763373c The sessions of the provider opencode use the default agent of OpenCode, with a deny of the reads of env files
+- 20261123-03 Nestor eab17763373c A model of the provider opencode is providerID/id; its only effort is auto
+- 20261123-04 Opus-5.5 eab17763373c The provider opencode takes the live events from the event stream of OpenCode (/api/event), filtered by the session; the last reply comes from the context of the session

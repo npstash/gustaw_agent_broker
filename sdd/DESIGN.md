@@ -273,46 +273,53 @@ Rules for an agent:
 
 #### 6.2.1 Provider `opencode`
 
-The provider `opencode` implements the operations of section 6.1.1 with the OpenCode API (`/api/...`, HTTP basic authentication, username `opencode`, password: the OpenCode password of section 8.4).
+The provider `opencode` implements the operations of section 6.1.1 with the HTTP API of OpenCode 2.2.7 (`/api/...`, HTTP basic authentication, username `opencode`, password: the OpenCode password of section 8.4). The routes and the shapes come from the OpenAPI document of OpenCode (`/openapi.json`) and from tests on the target host.
 
 | Broker operation | OpenCode |
 | --- | --- |
-| List the models | The models of the providers in the configuration of OpenCode. The ID is `provider/model`. DEFAULT_MODEL is the model of the configuration (`model`). **MISSING:** the route that gives the providers and their models. |
-| List the efforts | No call. The list is `["auto"]`, and DEFAULT_EFFORT is `auto`. OpenCode has no effort for the broker. |
-| Create a session | `POST /api/session` with `location.directory` (the workspace path) and `metadata.client` (the client ID). The model and the tool profile go into `metadata` too. Then `POST /api/session/{id}/agent` with the agent of the tool profile ("Tool profiles"). |
-| Change the settings | The new model goes into `metadata` of the session. **MISSING:** the route that changes the metadata of a session, and how a prompt selects the model of the session. |
-| List sessions | `GET /api/session`, all pages. The client ID is `metadata.client`. |
-| Read a session | `GET /api/session/{id}`. |
+| List the models | `GET /api/model`: each model as `providerID/id`, e.g. `cloudflare/@cf/openai/gpt-oss-20b`, with its name. DEFAULT_MODEL: `GET /api/model/default`. |
+| List the efforts | No call. The list is `["auto"]`, and DEFAULT_EFFORT is `auto`. Another effort gives `400` `invalid_setting`. |
+| Create a session | `POST /api/session` with `location.directory` (OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`) and the workspace), `model` (`{id, providerID}`), `permissions` (the rules of the tool policy, "Tools") and `metadata` (`client`, `workspace`, `tools`). The session uses the default agent of OpenCode. A model that is not in the list gives `400` `invalid_setting`. |
+| Change the settings | `POST /api/session/{id}/model` with the new model. `409` `busy` in the state `working`. |
+| List sessions | `GET /api/session`, all pages (`cursor.next`), without the child sessions. The client ID is `metadata.client`. |
+| Read a session | `GET /api/session/{id}`. The state is `working` while `time.busy` is later than `time.idle`, else `idle`. |
 | Delete a session | `DELETE /api/session/{id}`. |
-| Session stream | `GET /api/experimental/session/{id}/log?follow=true`: replay, then live events. |
-| Send a command | `POST /api/session/{id}/prompt` with the text and the command ID. |
+| Session stream | The `state` from `GET /api/session/{id}`; the reply replay from `GET /api/session/{id}/context`; then the live events of `GET /api/event` with the `sessionID` of the session. |
+| Send a command | `POST /api/session/{id}/prompt` with `id`: `msg_` and the hex digits of the command ID, and `text`. The same ID again gives `409` at OpenCode: the provider answers `duplicate`. `409` `busy` in the state `working`. |
 | Interrupt | `POST /api/session/{id}/interrupt`. |
-| Agent stream | `GET /api/event`, only the events that belong to no session. |
+| Agent stream | `GET /api/event`. OpenCode sends no lifecycle and no log events: the stream gives no event. |
 | Start, stop, restart | Docker only. OpenCode has no such call. |
+| Configuration | No key: `GET /config` gives an empty list; a key gives `404`. |
 
-| OpenCode event | Broker event |
+| OpenCode event (`/api/event`) | Broker event |
 | --- | --- |
-| `session.execution.succeeded` | `reply`, with the text of the turn and the detected language; then `state` `idle` |
-| `session.execution.failed` | `notice` `command_failed`; then `state` `idle` |
+| `session.inbox.delivered` | none: `inboxID` gives the command ID of the turn |
+| `session.execution.started` | `state` `working` |
+| `session.step.started`, `session.tool.called` | `status` |
+| `session.text.ended` | none: the last text of the turn |
+| `session.execution.succeeded` | `reply` with the last text of the turn and the detected language; then `state` `idle` |
+| `session.execution.failed` | `notice` `command_failed` with the error; then `state` `idle` |
 | `session.execution.interrupted` | `notice` `command_dropped`; then `state` `idle` |
-| `session.text.*`, `session.tool.*`, `session.step.*`, `session.retry.scheduled` | `status` |
 
-- The provider keeps no state. From the session log of OpenCode, it sends only the `state` and the reply replay of section 6.1.1, then the live events.
+- The provider keeps no state. The settings of a session stay in the session at OpenCode.
+- `GET /api/experimental/session/{id}/log?follow=true` gives no live events in OpenCode 2.2.7. The provider does not use it.
+- A turn can end with no text, e.g. a model that gives only reasoning: the reply is empty.
+- The language detection uses the languages of LANGUAGES (`en`, `pl`) and LANGUAGE_THRESHOLD (0.70). Below the threshold, the reply has the language `en`.
+- The folder of the workspaces is OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`). OpenCode accepts a folder that does not exist, so `force` changes nothing.
+- The provider follows the session states and the failures of section 6.1.1. It gives no `stopped`: OpenCode continues each session.
 
-**Tool profiles.** OpenCode cannot set the tools of one session, and it has no API that makes an agent. Each agent of OpenCode has permission rules. The deployment of OpenCode defines one agent for each tool policy that the broker supports:
+**Tools.** OpenCode keeps permission rules for each session. The last rule that matches wins, and the rules of a session come after the rules of the agent. The provider makes the rules of a tool policy:
 
-| Agent of OpenCode | Permission rules | Tool policy of the broker |
-| --- | --- | --- |
-| `broker-all` | allow each action | `allow` `null`, `deny` empty |
-| `broker-web` | deny each action, then allow `webfetch` and `websearch` | `allow` `webfetch`, `websearch`; `deny` empty |
-| `broker-none` | deny each action | `allow` empty, `deny` empty |
+| Tool policy | Rules |
+| --- | --- |
+| `allow` `null` | none |
+| `allow` with names | deny each action, then allow each name |
+| `deny` with names | then deny each name |
 
-- The provider finds the profile with the same tools as the policy. Each other policy gives `400` `unsupported_tools`.
+- Each session also denies `read` of `*.env` and `*.env.*`. OpenCode asks a person before such a read, and a broker session has no person.
 - The tool names are the action names of OpenCode, e.g. `webfetch`, `websearch`, `shell`, `edit`.
-- The provider follows the session states and the failures of section 6.1.1. **MISSING:** how it finds that OpenCode cannot continue a session (`stopped`).
-- The workspace root of OpenCode is the working directory of its container. The provider reads it from Docker at the start of the broker.
-- The provider checks the path of a workspace and creates a folder for `force` inside the container, through Docker.
-- The language detection uses the languages of LANGUAGES (`en`, `pl`). Below LANGUAGE_THRESHOLD (0.70), the language of the session does not change.
+- Each tool policy works: the provider gives no `unsupported_tools`.
+- Verified on the target host: a session that denies each action calls no tool; a session that allows `webfetch` and `websearch` calls the web search.
 
 ## 7. Key flows
 
@@ -403,6 +410,7 @@ Changes against the schema of voice client:
 | `agents.<name>.provider` | `agent_api` or `opencode` |
 | `agents.<name>.url` | The local URL of the agent |
 | `agents.<name>.container` | The name of the container of the agent |
+| `agents.<name>.workspace_root` | The provider `opencode`: OPENCODE_WORKSPACE_ROOT |
 | `streams.heartbeat_interval_s`, `streams.heartbeat_timeout_s` | HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT |
 | `streams.queue_limit` | STREAM_QUEUE_LIMIT of the broker |
 | `docker.socket` | DOCKER_SOCKET |
@@ -422,7 +430,7 @@ Default agents:
 | Name | Enabled | Provider | URL | Container |
 | --- | --- | --- | --- | --- |
 | `claude` | yes | `agent_api` | `http://127.0.0.1:38444` | `claude_code_server` |
-| `opencode` | no (its provider does not exist yet) | `opencode` | `http://127.0.0.1:4096` | `opencode` |
+| `opencode` | no (a host enables it in `local.yaml`) | `opencode` | `http://127.0.0.1:4096` | `opencode` |
 
 ### 8.4 Secrets
 
@@ -504,4 +512,5 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | CERT_NAMES | `localhost`, `127.0.0.1`, and the names and addresses of the target host | — | `cert.names` (component client) | Names in the certificate |
 | CERT_VALIDITY | 10 | years | `cert.validity_years` (component client) | Validity of the certificate |
 | DEFAULT_MODEL | each agent defines it | — | — | Model in `ModelList`: the starting value of a client |
+| OPENCODE_WORKSPACE_ROOT | `/home/opencode/workspace` | — | `agents.<name>.workspace_root` | The folder of the workspaces in the container of OpenCode |
 | DEFAULT_EFFORT | each agent defines it; `auto` for the provider `opencode` | — | — | Effort of a new session that gives none |

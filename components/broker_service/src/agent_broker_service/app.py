@@ -35,7 +35,8 @@ class Broker:
     def __init__(self, conf: Settings, secrets: secrets_proxy.Secrets, ssl_context: ssl.SSLContext):
         self.settings = conf
         self.ssl_context = ssl_context
-        self.router = router.build(conf)
+        opencode = secrets.get_secret("opencode_password") if "opencode_password" in settings.start_secrets(conf) else None
+        self.router = router.build(conf, router.factories(opencode))
         self.docker = DockerEngine(conf.docker_socket, inspect_timeout=conf.docker_inspect_timeout,
                                    control_timeout=conf.docker_control_timeout)
         self.proxy = EventProxy(self.router, self.docker, heartbeat=conf.heartbeat_interval,
@@ -103,7 +104,8 @@ def main() -> int:
         logs.setup(values.log_level)
         credentials = conf.section("credentials")
         refs = credentials.get("secrets")
-        start = {name: ref for name, ref in refs.items() if name in settings.START_SECRETS} if isinstance(refs, dict) else refs
+        wanted = settings.start_secrets(values)
+        start = {name: ref for name, ref in refs.items() if name in wanted} if isinstance(refs, dict) else refs
         secrets = secrets_proxy.open_secrets({**credentials, "secrets": start},
                                              lambda name: dependencies.find(name, settings.PROJECT))
         context = tls.server_context(values.cert_file, secrets.get_secret("tls_private_key"), settings.TLS_SCRATCH)

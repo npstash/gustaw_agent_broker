@@ -6,8 +6,8 @@ server:
 
 # The two supported agents, with all their settings. A local file can change each value, also `enabled`.
 # A local file cannot add an agent. The service does not serve an agent with `enabled: false`.
-# The provider of each agent: agent_api or opencode. The provider opencode is not implemented yet;
-# the service skips an enabled agent with this provider and writes a WARNING.
+# The provider of each agent: agent_api or opencode. The provider opencode needs the secret opencode_password and
+# workspace_root: the folder of the workspaces in the container of OpenCode.
 agents:
   claude:
     enabled: true
@@ -15,10 +15,11 @@ agents:
     url: http://127.0.0.1:38444
     container: claude_code_server
   opencode:
-    enabled: false           # its provider does not exist yet
+    enabled: false           # a host enables it in local.yaml
     provider: opencode
     url: http://127.0.0.1:4096
     container: opencode
+    workspace_root: /home/opencode/workspace
 
 log:
   level: INFO                # LOG_LEVEL: ERROR, WARNING, INFO or DEBUG

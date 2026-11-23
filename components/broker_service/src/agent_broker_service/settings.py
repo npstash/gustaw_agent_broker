@@ -34,8 +34,16 @@ TLS_SCRATCH = xdg_folder("XDG_RUNTIME_DIR", ".cache") / "tls"
 
 PROVIDERS = ("agent_api", "opencode")
 SECRET_NAMES = ("tls_private_key", "api_username", "api_password", "opencode_password")
-# The secrets that the service opens at start. The provider opencode is not implemented, so its password is not opened.
+# The secrets that the service opens at start. The password of OpenCode only if an agent with the provider opencode
+# is enabled (start_secrets).
 START_SECRETS = ["tls_private_key", "api_username", "api_password"]
+
+
+def start_secrets(conf: Settings) -> list[str]:
+    names = list(START_SECRETS)
+    if any(agent.enabled and agent.provider == "opencode" for agent in conf.agents):
+        names.append("opencode_password")
+    return names
 
 # The timeouts of the broker:
 # - The broker waits AGENT_REQUEST_TIMEOUT for an answer of an agent, less than the request timeout of the client (15 s).
@@ -92,6 +100,7 @@ class AgentSettings:
     url: str
     container: str
     enabled: bool = True
+    workspace_root: str = ""     # the provider opencode: the folder of the workspaces in its container
 
 
 @dataclass(frozen=True)
@@ -109,6 +118,9 @@ class Settings:
     agent_request_timeout: float = AGENT_REQUEST_TIMEOUT_S
     docker_inspect_timeout: float = DOCKER_INSPECT_TIMEOUT_S
     docker_control_timeout: float = DOCKER_CONTROL_TIMEOUT_S
+    languages: tuple[str, ...] = ("en", "pl")
+    language_threshold: float = 0.70
+    reply_replay: float = 600.0
 
 
 def load(path: Path = CONFIG_FILE, local_path: Path | None = LOCAL_CONFIG) -> cfg.ConfigFile:
@@ -121,8 +133,10 @@ def from_config(conf: cfg.ConfigFile) -> Settings:
     agents: list[AgentSettings] = []
     for name in conf.section("agents"):
         prefix = f"agents.{name}."
+        root = conf.get(prefix + "workspace_root", "")
         agents.append(AgentSettings(name, conf.get_str(prefix + "provider"), conf.get_str(prefix + "url"),
-                                    conf.get_str(prefix + "container"), enabled=conf.get_bool(prefix + "enabled")))
+                                    conf.get_str(prefix + "container"), enabled=conf.get_bool(prefix + "enabled"),
+                                    workspace_root=root if isinstance(root, str) else ""))
     return Settings(
         agents=tuple(agents),
         host=conf.get_str("server.host"),
@@ -132,4 +146,6 @@ def from_config(conf: cfg.ConfigFile) -> Settings:
         docker_socket=conf.get_str("docker.socket"),
         log_level=conf.get_str("log.level").upper(),
         cert_file=resolve_path(PROJECT, conf.get_str("cert.file")),
+        languages=tuple(str(v) for v in conf.get_list("language.languages")),
+        language_threshold=conf.get_float("language.threshold"),
     )

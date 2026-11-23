@@ -12,7 +12,7 @@ Open work and open issues. Check an item when its work is committed. The steps a
 
 ## Step 7: OpenCode
 
-- [ ] 6a. Provider `opencode` with the language detection (DESIGN, section 6.2.1).
+- [x] 6a. Provider `opencode` with the language detection (DESIGN, section 6.2.1).
 
 ## Open issues
 
@@ -20,5 +20,4 @@ The open issues are in [DESIGN.md](DESIGN.md), section 11.
 
 ## Session states and failures (DESIGN, section 6.1.1)
 
-- Provider `opencode` (step 7): follow the session states and the failures; send only the state and the reply replay from the session log.
-- Provider `opencode` (step 7): the keys `logging.levels.<component>` and the `log` events; the reply to an unknown slash command.
+- Provider `opencode`: the keys `logging.levels.<component>` and the `log` events; the reply to an unknown slash command. OpenCode has no such events.
