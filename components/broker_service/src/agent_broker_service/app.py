@@ -35,10 +35,10 @@ class Broker:
     def __init__(self, conf: Settings, secrets: secrets_proxy.Secrets, ssl_context: ssl.SSLContext):
         self.settings = conf
         self.ssl_context = ssl_context
-        opencode = secrets.get_secret("opencode_password") if "opencode_password" in settings.start_secrets(conf) else None
-        self.router = router.build(conf, router.factories(opencode))
         self.docker = DockerEngine(conf.docker_socket, inspect_timeout=conf.docker_inspect_timeout,
                                    control_timeout=conf.docker_control_timeout)
+        opencode = secrets.get_secret("opencode_password") if "opencode_password" in settings.start_secrets(conf) else None
+        self.router = router.build(conf, router.factories(opencode, self.docker))
         self.proxy = EventProxy(self.router, self.docker, heartbeat=conf.heartbeat_interval,
                                 queue_limit=conf.queue_limit, reconnect_interval=conf.reconnect_interval)
         self.api = Api(self.router, self.docker, self.proxy, secrets.get_secret("api_username"), secrets.get_secret("api_password"))

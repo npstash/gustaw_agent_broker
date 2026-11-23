@@ -5,24 +5,43 @@ import asyncio
 import time
 import uuid
 from collections.abc import Callable, Coroutine
+from pathlib import Path
 
 import pytest
+from fake_docker import FakeDocker
 from fake_opencode import PASSWORD, FakeOpencode
 
 from agent_broker_client.jsontypes import JsonObject, JsonValue
-from agent_broker_service.errors import AgentError
+from agent_broker_service.docker import DockerEngine
+from agent_broker_service.errors import AgentError, ContainerMissingError
 from agent_broker_service.opencode import OpencodeProvider, command_id, message_id, permission_rules
 from agent_broker_service.provider import Event
 
 type Test = Callable[[FakeOpencode, OpencodeProvider], Coroutine[object, object, None]]
 
 
+class Folders:
+    """The folders in the container of the fake OpenCode."""
+
+    def __init__(self) -> None:
+        self.existing: set[str] = set()
+
+    async def check(self, path: str, create: bool) -> bool:
+        if create:
+            self.existing.add(path)
+        return path in self.existing
+
+
+folders = Folders()
+
+
 def run(test: Test) -> None:
     async def main() -> None:
+        folders.existing.clear()
         fake = FakeOpencode()
         await fake.start()
         provider = OpencodeProvider("opencode", fake.url, PASSWORD, 5.0, "/home/opencode/workspace",
-                                    lambda text: "en" if text else None)
+                                    lambda text: "en" if text else None, folders.check)
         try:
             await test(fake, provider)
         finally:
@@ -72,6 +91,19 @@ def test_models_efforts_and_a_new_session() -> None:
         assert session["tools"] == policy and session["client"] == "scanner" and session["workspace"] == "example_project"
         assert session["agent"] == "opencode" and session["state"] == "idle"
         assert [s["id"] for s in await provider.list_sessions()] == [session["id"]]
+
+    run(test)
+
+
+def test_a_missing_folder_needs_force() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        with pytest.raises(AgentError) as info:
+            await provider.create_session(request(force=False))
+        assert info.value.status == 404 and info.value.body["error"] == "workspace_not_found" and not fake.sessions
+        await provider.create_session(request(force=True))
+        assert "/home/opencode/workspace/example_project" in folders.existing
+        await provider.create_session(request(force=False))      # it exists now
+        assert len(fake.sessions) == 2
 
     run(test)
 
@@ -166,3 +198,23 @@ def test_a_new_stream_gives_the_last_reply_again() -> None:
         assert events[1] == ("reply", {"session": sid, "command_id": cid, "message": "Done", "language": "en"})
 
     run(test)
+
+
+def test_docker_exec_gives_the_exit_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)         # a short, relative path of the Unix socket
+
+    async def main() -> None:
+        fake = FakeDocker("docker.sock", containers={"opencode": "running"})
+        await fake.start()
+        engine = DockerEngine(fake.socket_path, inspect_timeout=5, control_timeout=5)
+        try:
+            assert await engine.run("opencode", ["test", "-d", "/w/x"]) == 1
+            assert await engine.run("opencode", ["mkdir", "-p", "/w/x"]) == 0
+            assert await engine.run("opencode", ["test", "-d", "/w/x"]) == 0
+            assert fake.commands[1] == ("opencode", ["mkdir", "-p", "/w/x"])
+            with pytest.raises(ContainerMissingError):
+                await engine.run("gone", ["true"])
+        finally:
+            await engine.close()
+            await fake.stop()
+    asyncio.run(main())

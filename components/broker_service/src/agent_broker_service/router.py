@@ -9,6 +9,7 @@ from agent_broker_client.models import Provider
 
 from . import logs
 from .agent_api import AgentApiProvider
+from .docker import DockerEngine
 from .language import detector
 from .opencode import OpencodeProvider
 from .provider import AgentProvider
@@ -23,16 +24,21 @@ def _agent_api(agent: AgentSettings, settings: Settings) -> AgentProvider:
     return AgentApiProvider(agent.name, agent.url, settings.agent_request_timeout)
 
 
-def factories(opencode_password: str | None = None) -> dict[Provider, ProviderFactory]:
-    """The factories of the providers. The provider opencode needs the password of OpenCode."""
+def factories(opencode_password: str | None = None, docker: DockerEngine | None = None) -> dict[Provider, ProviderFactory]:
+    """The factories of the providers. The provider opencode needs the password of OpenCode and Docker."""
     made: dict[Provider, ProviderFactory] = {Provider.AGENT_API: _agent_api}
-    if opencode_password is not None:
-        password = opencode_password
+    if opencode_password is not None and docker is not None:
+        password, engine = opencode_password, docker
 
         def _opencode(agent: AgentSettings, settings: Settings) -> AgentProvider:
+            async def folders(path: str, create: bool) -> bool:
+                if create:
+                    await engine.run(agent.container, ["mkdir", "-p", path])
+                return await engine.run(agent.container, ["test", "-d", path]) == 0
             return OpencodeProvider(agent.name, agent.url, password, settings.agent_request_timeout,
                                     agent.workspace_root or "/home/opencode/workspace",
-                                    detector(settings.languages, settings.language_threshold), settings.reply_replay)
+                                    detector(settings.languages, settings.language_threshold), folders,
+                                    settings.reply_replay)
         made[Provider.OPENCODE] = _opencode
     return made
 

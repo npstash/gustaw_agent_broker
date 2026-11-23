@@ -82,9 +82,10 @@ class DockerEngine:
         if session is not None:
             await session.close()
 
-    async def _call(self, method: str, path: str, timeout: float) -> tuple[int, JsonValue]:
+    async def _call(self, method: str, path: str, timeout: float,
+                    request: JsonObject | None = None) -> tuple[int, JsonValue]:
         try:
-            async with self._http().request(method, BASE_URL + path,
+            async with self._http().request(method, BASE_URL + path, json=request,
                                             timeout=aiohttp.ClientTimeout(total=timeout)) as response:
                 status = response.status
                 text = await response.text()
@@ -127,6 +128,22 @@ class DockerEngine:
 
     async def restart(self, name: str) -> None:
         await self._control(name, "restart")
+
+    async def run(self, name: str, command: list[str]) -> int:
+        """Run a command in the container as its user, and give its exit code. No shell: ``command`` is the argv."""
+        status, body = await self._call("POST", f"/containers/{quote(name, safe='')}/exec", self.inspect_timeout,
+                                        {"Cmd": list[JsonValue](command), "AttachStdout": True, "AttachStderr": True})
+        if status == 404:
+            raise ContainerMissingError(f"no container {name}")
+        exec_id = _object(body).get("Id")
+        if status != 201 or not isinstance(exec_id, str):
+            raise DockerUnavailableError(f"exec in {name}: Docker answered {status}")
+        await self._call("POST", f"/exec/{exec_id}/start", self.control_timeout, {"Detach": False, "Tty": False})
+        status, body = await self._call("GET", f"/exec/{exec_id}/json", self.inspect_timeout)
+        code = _object(body).get("ExitCode")
+        if status != 200 or not isinstance(code, int):
+            raise DockerUnavailableError(f"exec in {name}: no exit code")
+        return code
 
     async def events(self, names: Iterable[str]) -> AsyncIterator[ContainerEvent]:
         """Give each lifecycle event of the named containers. End when Docker ends the stream.

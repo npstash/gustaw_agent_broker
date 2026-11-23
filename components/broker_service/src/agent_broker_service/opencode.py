@@ -11,7 +11,7 @@ import codecs
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from urllib.parse import quote
 
@@ -32,6 +32,8 @@ PAGE_LIMIT = 100
 ENV_RULES: list[JsonValue] = [{"action": "read", "resource": "*.env", "effect": "deny"},
                               {"action": "read", "resource": "*.env.*", "effect": "deny"}]
 type Detect = Callable[[str], str | None]
+# Make sure that a workspace folder exists in the container of OpenCode: (path, create) -> it exists now.
+type FolderCheck = Callable[[str, bool], Awaitable[bool]]
 
 
 def message_id(command_id: str) -> str:
@@ -100,13 +102,14 @@ def _state(info: JsonObject) -> str:
 
 class OpencodeProvider(AgentProvider):
     def __init__(self, agent: str, url: str, password: str, request_timeout: float, workspace_root: str,
-                 detect: Detect, reply_replay: float = 600.0):
+                 detect: Detect, folders: FolderCheck, reply_replay: float = 600.0):
         self._agent = agent
         self._url = URL(url.rstrip("/"))
         self._auth = "Basic " + base64.b64encode(f"opencode:{password}".encode()).decode()
         self._timeout = request_timeout
         self._root = workspace_root.rstrip("/") or "/"
         self._detect = detect
+        self._folders = folders
         self._reply_replay = reply_replay
         self._session: aiohttp.ClientSession | None = None
         self._started = time.monotonic()
@@ -239,6 +242,9 @@ class OpencodeProvider(AgentProvider):
         effort = request.get("effort")
         await self._check(model, str(effort) if effort is not None else None)
         name, path = self._workspace(str(request["workspace"]))
+        # OpenCode accepts a session in a folder that does not exist, but its prompts then fail.
+        if name != "." and not await self._folders(path, request.get("force") is True):
+            raise AgentError(404, messages.error_body("workspace_not_found", f"no folder {name}"))
         raw_tools = request.get("tools")
         tools = raw_tools if isinstance(raw_tools, dict) else {"allow": None, "deny": []}
         body: JsonObject = {

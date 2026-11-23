@@ -305,7 +305,7 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 - `GET /api/experimental/session/{id}/log?follow=true` gives no live events in OpenCode 2.2.7. The provider does not use it.
 - A turn can end with no text, e.g. a model that gives only reasoning: the reply is empty.
 - The language detection uses the languages of LANGUAGES (`en`, `pl`) and LANGUAGE_THRESHOLD (0.70). Below the threshold, the reply has the language `en`.
-- The folder of the workspaces is OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`). OpenCode accepts a folder that does not exist, so `force` changes nothing.
+- The folder of the workspaces is OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`). OpenCode accepts a session in a folder that does not exist, but its prompts then give `404`. So the provider checks the folder in the container of OpenCode through Docker (`test -d`): a missing folder gives `404` `workspace_not_found`; with `force`, the provider makes it first (`mkdir -p`), as the user of the container.
 - The provider follows the session states and the failures of section 6.1.1. It gives no `stopped`: OpenCode continues each session.
 
 **Tools.** OpenCode keeps permission rules for each session. The last rule that matches wins, and the rules of a session come after the rules of the agent. The provider makes the rules of a tool policy:

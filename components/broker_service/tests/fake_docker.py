@@ -27,6 +27,10 @@ class FakeDocker:
     # Called after each start, stop and restart with (container, action).
     on_action: Callable[[str, str], None] | None = None
     event_connects: int = 0
+    # The folders of each container for the exec of mkdir -p and test -d; the commands that ran.
+    folders: dict[str, set[str]] = field(default_factory=dict)
+    commands: list[tuple[str, list[str]]] = field(default_factory=list)
+    _execs: dict[str, int] = field(default_factory=dict)
     _event_queues: list[asyncio.Queue[bytes]] = field(default_factory=list)
     _runner: web.AppRunner | None = None
 
@@ -36,6 +40,9 @@ class FakeDocker:
             web.get("/containers/{name}/json", self._inspect),
             web.post("/containers/{name}/{action:start|stop|restart}", self._control),
             web.get("/events", self._events),
+            web.post("/containers/{name}/exec", self._exec_create),
+            web.post("/exec/{id}/start", self._exec_start),
+            web.get("/exec/{id}/json", self._exec_json),
         ])
         self._runner = web.AppRunner(app, handler_cancellation=True, shutdown_timeout=0.5)
         await self._runner.setup()
@@ -69,6 +76,29 @@ class FakeDocker:
             return web.json_response({"message": f"No such container: {name}"}, status=404)
         return web.json_response({"Name": "/" + name, "State": {"Status": self.containers[name]},
                                   "Config": {"WorkingDir": self.working_dirs.get(name, "")}})
+
+    async def _exec_create(self, request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        if name not in self.containers:
+            return web.json_response({"message": f"No such container: {name}"}, status=404)
+        body = await request.json()
+        command = [str(part) for part in body["Cmd"]]
+        self.commands.append((name, command))
+        known = self.folders.setdefault(name, set())
+        code = 0
+        if command[:2] == ["mkdir", "-p"]:
+            known.add(command[2])
+        elif command[:2] == ["test", "-d"]:
+            code = 0 if command[2] in known else 1
+        exec_id = f"exec{len(self._execs) + 1}"
+        self._execs[exec_id] = code
+        return web.json_response({"Id": exec_id}, status=201)
+
+    async def _exec_start(self, request: web.Request) -> web.Response:
+        return web.Response(status=200, body=b"")
+
+    async def _exec_json(self, request: web.Request) -> web.Response:
+        return web.json_response({"ExitCode": self._execs[request.match_info["id"]], "Running": False})
 
     async def _control(self, request: web.Request) -> web.Response:
         name = request.match_info["name"]
