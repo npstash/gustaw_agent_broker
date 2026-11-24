@@ -2,7 +2,7 @@
 # Update the Agent Broker on the host. Run it in the clone of the project.
 #   update.sh [--override FILE]    pull the current branch, build the image from the committed code, run prepare.sh, start the container
 #   update.sh --no-up ...          do all steps except "docker compose up -d"
-#   update.sh --pull ...           pull the newest base image for the build (fixes of the operating system)
+#   update.sh --pull ...           build with the newest base image of the tag; no effect for a base image with a digest
 #   update.sh --dry-run ...        print the steps; run no git command and no Docker command that changes something
 # The script does not switch the branch. It never prints a secret. It stops at the first error with a non-zero exit code.
 # prepare.sh gives the operator values of config.env.
@@ -60,6 +60,9 @@ main() {
     fi
     local -a build_args=()
     [[ $pull -eq 0 ]] || build_args+=("--pull")
+    if [[ $pull -eq 1 ]] && git_ show HEAD:components/broker_service/Dockerfile | grep -qE '^FROM[[:space:]]+[^[:space:]]+@sha256:'; then
+        printf 'update: warning: the Dockerfile pins the base image with a digest: --pull has no effect\n' >&2
+    fi
     act docker build "${build_args[@]}" -t "$SERVICE:$commit" -t "$SERVICE:latest" \
         --build-arg "AGENT_BROKER_COMMIT=$commit" \
         --build-arg "AGENT_BROKER_COMMIT_DATE=$(git_ log -1 --format=%cI)" \

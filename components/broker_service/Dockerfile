@@ -2,7 +2,11 @@
 # The build context is .local_assets/build/ of the project: update.sh fills it with git archive of this project
 # into opt/gustaw/agent_broker/. The image holds no secret, no vault and no part of maya-agent-kit.
 # A host with a vault mounts the vault and the vault tool beside the code (compose.override.yaml of the host).
-FROM ubuntu:26.04
+# The digest pins the base image, and APT_SNAPSHOT pins the apt packages to a snapshot of the Ubuntu archive.
+# Fixes of OS packages: set APT_SNAPSHOT to a newer time in UTC. A new base image: set its digest. Commit, then deploy.
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+
+ARG APT_SNAPSHOT=20261124T000000Z
 
 ARG AGENT_BROKER_COMMIT=unknown
 ARG AGENT_BROKER_COMMIT_DATE=
@@ -15,7 +19,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/opt/venv/bin:$PATH
 
 # Python 3.14 in a venv.
-RUN apt-get update \
+RUN apt-get update -q --snapshot "$APT_SNAPSHOT" \
+    && apt-get upgrade -y -q \
     && apt-get install -y --no-install-recommends python3 python3-venv python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv
