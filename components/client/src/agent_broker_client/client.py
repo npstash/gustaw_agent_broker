@@ -23,7 +23,7 @@ from .models import (AgentInfo, AgentResult, BrokerEvent, CommandAccepted, Comma
                      ConfigValue, EffortList, InvalidEvent, ModelList, Session, SessionEvent, SessionResult,
                      ToolPolicy)
 from .stream import ConnectionListener, ConnectionState, EventStream
-from .tls import DEFAULT_CERT_FILE, client_context
+from .tls import client_context
 
 HEARTBEAT_TIMEOUT_S = 45.0     # HEARTBEAT_TIMEOUT
 RECONNECT_INTERVAL_S = 5.0     # RECONNECT_INTERVAL
@@ -47,7 +47,7 @@ class HttpBrokerClient(BrokerClient):
     """
 
     def __init__(self, url: str, username: str, password: str, client_id: str, *,
-                 cert_file: Path | str = DEFAULT_CERT_FILE,
+                 cert_file: Path | str,
                  heartbeat_timeout: float = HEARTBEAT_TIMEOUT_S,
                  reconnect_interval: float = RECONNECT_INTERVAL_S,
                  request_timeout: float = REQUEST_TIMEOUT_S,

@@ -80,8 +80,7 @@ def test_certificate_kind_and_extensions() -> None:
 
 def test_default_configuration_follows_the_design() -> None:
     conf = cfg.ConfigFile(certtool.CONFIG_FILE, certtool.VALIDATORS)
-    names = conf.get_list("cert.names")
-    assert "localhost" in names and "127.0.0.1" in names
+    assert conf.get_list("cert.names") == ["localhost", "127.0.0.1"]
     assert conf.get_int("cert.validity_years") == 10
     assert conf.get_str("credentials.vault") == "vault-agent_broker"
     assert conf.get_str_map("credentials.secrets.tls_private_key") == {
@@ -133,4 +132,24 @@ def test_bad_names_stop_before_any_write(tmp_path: Path, names: list[str]) -> No
     with pytest.raises(SystemExit):
         certtool.main(["--config", str(path), "--vault-home", str(tmp_path), "--cert", str(tmp_path / "c.crt")],
                       key_writer=fake.write)
+    assert fake.calls == [] and not (tmp_path / "c.crt").exists()
+
+
+def test_host_configuration_replaces_the_names_and_places_the_certificate(tmp_path: Path) -> None:
+    fake = FakeVault()
+    host = tmp_path / "host"
+    host.mkdir()
+    local = host / "certtool.yaml"
+    local.write_text("cert:\n  file: server.crt\n  names: [broker.example.net, 192.0.2.10]\n", encoding="utf-8")
+    assert certtool.main(["--config", str(local), "--vault-home", str(tmp_path)], key_writer=fake.write) == 0
+    cert = x509.load_pem_x509_certificate((host / "server.crt").read_bytes())
+    assert san(cert) == ({"broker.example.net"}, {"192.0.2.10"})
+    assert fake.calls[0][2] == "Agent Broker TLS 01"
+
+
+def test_missing_host_configuration_stops_before_any_write(tmp_path: Path) -> None:
+    fake = FakeVault()
+    with pytest.raises(SystemExit):
+        certtool.main(["--config", str(tmp_path / "none.yaml"), "--vault-home", str(tmp_path),
+                       "--cert", str(tmp_path / "c.crt")], key_writer=fake.write)
     assert fake.calls == [] and not (tmp_path / "c.crt").exists()

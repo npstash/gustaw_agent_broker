@@ -2,11 +2,11 @@
 
 One API for several coding agents. A client selects an agent and a session in each call.
 
-Status: the broker with the agent API is implemented. It runs on the target host, with the agent `claude` behind it. The provider `opencode` is open ([sdd/TODO.md](sdd/TODO.md)).
+Status: the broker with the agent API and the providers `agent_api` and `opencode` is implemented ([sdd/TODO.md](sdd/TODO.md)).
 
 ## SDD
 
-The project follows the [SDD workflow](../../../maya/tools/sdd-templates/workflow.md).
+The project follows the [SDD workflow](https://github.com/npstash/maya-agent-kit/blob/main/tools/sdd-templates/workflow.md).
 
 - Design: [sdd/DESIGN.md](sdd/DESIGN.md)
 - Decision log: [sdd/ADL.md](sdd/ADL.md)
@@ -35,7 +35,7 @@ Layout of the clones on the host. Put the dependencies next to the project, or i
 ```
 <folder>/agent_broker/            this project (its own clone)
 <folder>/maya-agent-kit/          or <folder>/maya
-<folder>/vault-agent_broker/
+<folder>/<vault>/                 the vault of the broker; its name is in dependencies.txt
 ```
 
 The vault and maya-agent-kit are necessary only for a host that keeps the secrets in the vault.
@@ -43,9 +43,10 @@ The vault and maya-agent-kit are necessary only for a host that keeps the secret
 First start:
 
 1. Clone the project. For a vault, also clone maya-agent-kit and the vault as shown, and enrol the clone of the vault:
-   [tools/auth/README.md](../../../maya/tools/auth/README.md), section "Enrolment". The key of the clone must open the vault without a terminal.
+   [tools/auth/README.md](https://github.com/npstash/maya-agent-kit/blob/main/tools/auth/README.md), section "Enrolment". The key of the clone must open the vault without a terminal.
 2. Give the secrets (see "Secrets").
-3. Run `./update.sh`. For a vault, run `./update.sh --override FILE` with a `compose.override.yaml` that mounts the vault and the vault tool.
+3. Make the certificate: `components/client/run.sh cert --config FILE`. FILE gives `cert.names` and `cert.file` of the host. Copy the certificate as `server.crt` into the configuration folder.
+4. Run `./update.sh`. For a vault, run `./update.sh --override FILE` with a `compose.override.yaml` that mounts the vault and the vault tool.
 
 Update: run `./update.sh`. The script pulls the current branch of the clone. It does not switch the branch. It stops on a detached HEAD and on local changes.
 It builds the image `agent_broker:<commit>` from the committed code, runs `prepare.sh` and runs `docker compose up -d` in `${HOME}/containers/agent_broker/`.
@@ -68,8 +69,10 @@ AGENT_BROKER_TLS_PRIVATE_KEY_FILE=/home/gustaw/agent_broker/.config/gustaw/agent
 ```
 
 An env file cannot hold a value of more than one line. Thus put the private key (PEM) into a file of the configuration folder, mode 600.
-With a vault, set `credentials.vault: vault-agent_broker` in `local.yaml`. The service then reads the entries of the configuration from the vault.
+With a vault, set `credentials.vault: <vault>` in `local.yaml`. The service then reads the entries of the configuration from the vault.
 
-Verified in the target environment (Ubuntu Server 26.04 LTS; 2026-11-18, commit `2cf1715`): the image build, the start of the container, the tests of each component, the login and the certificate. A session at the agent `claude` gave a reply to a command and was deleted. Not verified: the agent `opencode`.
+With a vault, Agent Broker needs the repositories `maya-agent-kit` and the vault of the broker. [dependencies.txt](dependencies.txt) gives their layouts.
 
-Agent Broker is a submodule of the repository `the workspace`. With a vault, it needs the repositories `maya-agent-kit` and `vault-agent_broker`. [dependencies.txt](dependencies.txt) gives their layouts.
+## License
+
+[MIT](LICENSE)

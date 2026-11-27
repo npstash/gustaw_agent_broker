@@ -17,7 +17,6 @@ import pytest
 from fake_broker import PASSWORD, USERNAME, FakeBroker, Request, TlsFiles, make_tls_files
 
 import agent_broker_client as abc_
-from agent_broker_client import config as cfg
 from agent_broker_client import messages, models, sse
 from agent_broker_client import stream as stream_module
 from agent_broker_client.jsontypes import JsonObject, JsonValue
@@ -292,10 +291,9 @@ def test_tls_checks_the_host_name(tls: TlsFiles, tmp_path: Path) -> None:
     assert context.check_hostname
 
 
-def test_default_certificate_file_is_the_one_of_the_configuration() -> None:
-    project = Path(abc_.__file__).resolve().parents[2]
-    conf = cfg.ConfigFile(project / "config" / "config.yaml")
-    assert abc_.DEFAULT_CERT_FILE == (project / conf.get_str("cert.file")).resolve()
+def test_client_has_no_default_certificate_and_default_timeouts() -> None:
+    with pytest.raises(TypeError):
+        abc_.HttpBrokerClient("https://127.0.0.1:9", USERNAME, PASSWORD, "c")   # type: ignore[call-arg]
     assert (abc_.HEARTBEAT_TIMEOUT_S, abc_.RECONNECT_INTERVAL_S) == (45.0, 5.0)
 
 

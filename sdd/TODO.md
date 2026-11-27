@@ -1,6 +1,6 @@
 # TODO — Agent Broker
 
-Open work and open issues. Check an item when its work is committed. The steps are the steps of [ADR-20261115-service_split](the voice client repository/blob/main/sdd/adr/ADR-20261115-service_split.md) of voice client.
+Open work and open issues. Check an item when its work is committed.
 
 ## Step 1: broker with the agent API
 

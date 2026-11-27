@@ -13,3 +13,6 @@ venv/
 
 # Atomic-write leftovers
 *.tmp
+
+# The certificate of a host: it is in the deployment project of the host, not here
+components/client/tls/

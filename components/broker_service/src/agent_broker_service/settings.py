@@ -2,7 +2,7 @@
 
 ``config/config.yaml`` holds the default values. The optional local file ``local.yaml`` of the configuration
 folder ``${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`` replaces values of the same keys. A local file cannot add a key,
-so it cannot add an agent.
+so it cannot add an agent. A relative path of ``cert.file`` starts at the configuration folder.
 """
 from __future__ import annotations
 
@@ -27,7 +27,8 @@ def xdg_folder(variable: str, default: str) -> Path:
     return Path(base) / APP_FOLDER
 
 
-LOCAL_CONFIG = xdg_folder("XDG_CONFIG_HOME", ".config") / "local.yaml"
+CONFIG_FOLDER = xdg_folder("XDG_CONFIG_HOME", ".config")
+LOCAL_CONFIG = CONFIG_FOLDER / "local.yaml"
 # The private key goes into a file here for some milliseconds only (see tls.server_context).
 # The XDG runtime folder, else the cache folder: in the container, both are in the tmpfs HOME.
 TLS_SCRATCH = xdg_folder("XDG_RUNTIME_DIR", ".cache") / "tls"
@@ -113,7 +114,7 @@ class Settings:
     queue_limit: int = 100
     docker_socket: str = "/var/run/docker.sock"
     log_level: str = "INFO"
-    cert_file: Path = field(default_factory=lambda: resolve_path(PROJECT, "../client/tls/server.crt"))
+    cert_file: Path = field(default_factory=lambda: resolve_path(CONFIG_FOLDER, "server.crt"))
     reconnect_interval: float = RECONNECT_INTERVAL_S
     agent_request_timeout: float = AGENT_REQUEST_TIMEOUT_S
     docker_inspect_timeout: float = DOCKER_INSPECT_TIMEOUT_S
@@ -145,7 +146,7 @@ def from_config(conf: cfg.ConfigFile) -> Settings:
         queue_limit=conf.get_int("streams.queue_limit"),
         docker_socket=conf.get_str("docker.socket"),
         log_level=conf.get_str("log.level").upper(),
-        cert_file=resolve_path(PROJECT, conf.get_str("cert.file")),
+        cert_file=resolve_path(CONFIG_FOLDER, conf.get_str("cert.file")),
         languages=tuple(str(v) for v in conf.get_list("language.languages")),
         language_threshold=conf.get_float("language.threshold"),
     )

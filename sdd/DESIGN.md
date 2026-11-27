@@ -2,7 +2,7 @@
 
 This project uses the service variant of the SDD process. Section 6 defines the required behaviour of the service.
 
-The work list is in [TODO.md](TODO.md). [ADR-20261115-service_split](the voice client repository/blob/main/sdd/adr/ADR-20261115-service_split.md) of voice client proposes the change that uses this service.
+The work list is in [TODO.md](TODO.md).
 
 ## 1. Overview
 
@@ -26,19 +26,19 @@ System boundary: the broker service, its client library and the agent API contra
 
 ```mermaid
 flowchart TD
-    C1[Voice client of voice client<br/><i>client</i>] -->|commands, events, HTTPS| B[Agent Broker<br/><i>this system</i>]
+    C1[Voice client<br/><i>client</i>] -->|commands, events, HTTPS| B[Agent Broker<br/><i>this system</i>]
     C2[RAG client<br/><i>client, future</i>] -->|commands, events, HTTPS| B
-    B -->|agent API, HTTP on 127.0.0.1| A1[Claude server of claude-server<br/><i>agent</i>]
+    B -->|agent API, HTTP on 127.0.0.1| A1[Claude server<br/><i>agent</i>]
     B -->|OpenCode API, HTTP on 127.0.0.1| A2[OpenCode<br/><i>agent</i>]
     B -->|start, stop, restart, inspect; Docker socket| D[Docker engine<br/><i>external system</i>]
-    B -->|reads secrets| V[(vault-agent_broker<br/><i>vault</i>)]
+    B -->|reads secrets| V[(Vault of the broker<br/><i>vault</i>)]
 ```
 
 - **Client:** a program that sends commands to an agent and reads the events. It uses the client library.
-- **Claude server:** the agent for Claude Code, project claude-server. It implements the agent API of this project.
+- **Claude server:** the agent for Claude Code. It implements the agent API of this project.
 - **OpenCode:** an agent with its own API. The broker has an adapter for it.
 - **Docker engine:** runs the agent containers.
-- **vault-agent_broker:** holds the secrets of the broker (section 8.4).
+- **Vault of the broker:** holds the secrets of the broker (section 8.4).
 
 ## 4. Containers (C4 level 2)
 
@@ -375,7 +375,7 @@ sequenceDiagram
 
 `messages.schema.json` in this repository is the contract (JSON Schema, draft 2020-12). It comes from the schema of the earlier API of the Claude server. Each client and each agent reads this file from the submodule. No project keeps a copy.
 
-Changes against the schema of voice client:
+Changes against the schema of the earlier API of the Claude server:
 
 | Message | Change |
 | --- | --- |
@@ -420,7 +420,7 @@ Changes against the schema of voice client:
 
 The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CONTROL_TIMEOUT (60 s) and its own STREAM_QUEUE_LIMIT (100) are values of the client library (section 12).
 
-`config/config.yaml` of the component client is the only source of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it.
+`config/config.yaml` of the component client holds the defaults of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it. The file of `run.sh cert --config FILE` replaces the values of a host. Keep it in the deployment project of the host.
 
 The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`local.yaml` of `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`) can change each value of these agents, also `enabled`. It cannot add another agent.
 
@@ -436,7 +436,7 @@ Default agents:
 
 The broker service gets its secrets with `secrets_proxy`, a copy of the reference code of maya-agent-kit. The source is selected one time, at the start:
 
-- `credentials.vault` is set: each secret comes from the vault `vault-agent_broker`. There is no fallback.
+- `credentials.vault` is set: each secret comes from the vault of `credentials.vault`. There is no fallback.
 - `credentials.vault` is empty: each secret comes from its environment variable, or from the file of `<variable>_FILE`.
   The service removes these variables from its environment.
 
@@ -454,7 +454,7 @@ The broker service gets its secrets with `secrets_proxy`, a copy of the referenc
 - The target environment: Ubuntu Server 26.04 LTS, Docker Engine with the rootful daemon.
 - The broker runs as one Docker container on the target host, with the host network.
 - The image `agent_broker:<commit>` and `agent_broker:latest` is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) in `/opt/gustaw/agent_broker`. It holds no secret, no vault and no part of maya-agent-kit.
-- A host with a vault mounts the vault at `/opt/gustaw/vault-agent_broker` and the vault tool at `/opt/gustaw/maya/tools/auth` with `compose.override.yaml`. The paths of `dependencies.txt` (`../vault-agent_broker`, `../maya`) find them.
+- A host with a vault mounts the vault at `/opt/gustaw/<vault>` and the vault tool at `/opt/gustaw/maya/tools/auth` with `compose.override.yaml`. The paths of `dependencies.txt` (`../vault-agent_broker`, `../maya`) find them.
 - The container runs as the user of `prepare.sh` on the host (`HOST_UID`, `HOST_GID`), not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`). HOME is the `tmpfs` `/home/gustaw/agent_broker` of that user. It holds the scratch folder of the TLS key.
 - The project has its own clone on the host, with the dependencies next to it or inside it. `update.sh` works on the repository that it is in:
   1. It checks that HEAD is on a branch and that the clone has no local changes. It pulls the current branch with `git pull --ff-only`. It does not switch the branch, so the clone can stay on a release branch.
@@ -463,11 +463,11 @@ The broker service gets its secrets with `secrets_proxy`, a copy of the referenc
   4. It runs `docker compose up -d` in the deploy folder: the container is made again from the new image. `--no-up` skips this step.
 - A restart of the container does not update the code.
 - `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`. It holds no value of a host.
-- Mounts: the Docker socket; the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `~/.config/gustaw/agent_broker/` of the container, for the optional `local.yaml` and the secrets. With a vault, `compose.override.yaml` adds the vault, read-write (the vault tool writes its access log), and the vault tool, read-only.
+- Mounts: the Docker socket; the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `~/.config/gustaw/agent_broker/` of the container, for the optional `local.yaml`, the certificate and the secrets. With a vault, `compose.override.yaml` adds the vault, read-write (the vault tool writes its access log), and the vault tool, read-only.
 - The secrets without a vault come from `agent_broker.env` of the configuration folder (`env_file`, optional).
 - `prepare.sh` writes the variables of `compose.yaml` into `.env` of the deploy folder. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET. A variable of the environment replaces a value of `config.env`.
 - With a vault, the clone key of the host clone must open the vault without a terminal.
-- The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. It is committed in `tls/server.crt`. Each client reads it from the submodule.
+- The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. This repository holds no certificate. The deployment project of the host keeps it and deploys it as `server.crt` into the configuration folder (`cert.file`). Each client gives the file of its host.
 
 | Dependency | Container | Use |
 | --- | --- | --- |

@@ -26,7 +26,7 @@ The provider `opencode` (section 6.2.1) is not implemented yet. The service skip
 
 - Service: `run.sh` with no verb. The service runs in the foreground until SIGTERM or SIGINT.
 - At start, the service opens its secrets: from the vault if `credentials.vault` is set, else from environment variables (see the README of the project, "Secrets").
-- The certificate is `../client/tls/server.crt` (`cert.file`). Make it with `../client/run.sh cert`.
+- The certificate is `server.crt` of the configuration folder (`cert.file`). Make it with `../client/run.sh cert --config FILE`.
 - The log lines go to the standard error output. The first line gives the version: commit, date and subject.
 - In a Docker image, give the version in `AGENT_BROKER_COMMIT`, `AGENT_BROKER_COMMIT_DATE` and `AGENT_BROKER_COMMIT_SUBJECT`.
 

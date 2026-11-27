@@ -15,13 +15,13 @@ from .models import (AgentInfo, AgentResult, AgentState, Applied, BrokerEvent, C
                      LogEvent, LogLevel, ModelInfo, ModelList, NoticeEvent, NoticeKind, Provider, ReplyEvent, Session,
                      SessionEvent, SessionResult, SessionState, StateEvent, StatusEvent, StatusKind, ToolPolicy)
 from .stream import STREAM_QUEUE_LIMIT, ConnectionListener, ConnectionState
-from .tls import DEFAULT_CERT_FILE, client_context
+from .tls import client_context
 
 __all__ = [
     "AGENT_CONTROL_TIMEOUT_S", "AgentInfo", "AgentResult", "AgentState", "AgentUnavailableError", "Applied", "BadRequestError",
     "BrokerClient", "BrokerError", "BrokerEvent", "BrokerTlsError", "BrokerUnreachableError", "BusyError",
     "ClientClosedError", "CommandAccepted", "CommandMode", "CommandStatus", "ConfigSetResult", "ConfigValue",
-    "ConnectionListener", "ConnectionState", "ContainerState", "DEFAULT_CERT_FILE", "ErrorCode",
+    "ConnectionListener", "ConnectionState", "ContainerState", "ErrorCode",
     "HEARTBEAT_TIMEOUT_S", "HttpBrokerClient", "HttpSessionClient", "InvalidAnswerError", "InvalidEvent",
     "LogEvent", "LogLevel", "MessageError", "NotFoundError", "NoticeEvent", "NoticeKind", "Provider",
     "RECONNECT_INTERVAL_S", "REQUEST_TIMEOUT_S", "ReplyEvent", "Session", "SessionClient", "SessionEvent",

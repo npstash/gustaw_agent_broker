@@ -21,9 +21,15 @@ def test_settings_of_the_default_configuration() -> None:
         AgentSettings("opencode", "opencode", "http://127.0.0.1:4096", "opencode", enabled=False,
                       workspace_root="/home/opencode/workspace"))
     assert values.log_level == "INFO"
-    assert values.cert_file == (settings.PROJECT.parent / "client" / "tls" / "server.crt").resolve()
+    assert values.cert_file == (settings.CONFIG_FOLDER / "server.crt").resolve()
     assert values.reconnect_interval == 5.0
     assert values.docker_control_timeout < 60.0   # the broker answers before AGENT_CONTROL_TIMEOUT of the client
+
+
+def test_absolute_certificate_file_stays(tmp_path: Path) -> None:
+    local = tmp_path / "local.yaml"
+    local.write_text(f"cert:\n  file: {tmp_path / 'broker.crt'}\n", encoding="utf-8")
+    assert settings.from_config(settings.load(local_path=local)).cert_file == tmp_path / "broker.crt"
 
 
 def test_local_file_replaces_values(tmp_path: Path) -> None:

@@ -22,8 +22,7 @@ A client project installs this component with pip. The package is `agent_broker_
 | `src/agent_broker_client/vault.py` | Find the vault tool for certtool (`maya/tools/auth`). `FakeSecrets` for tests. |
 | `src/agent_broker_client/dependencies.py` | Find `maya-agent-kit` and the vault. A copy of the reference code. Do not change it. |
 | `src/agent_broker_client/jsontypes.py` | The types of a JSON value. |
-| `config/config.yaml` | The configuration of certtool: the certificate file, CERT_NAMES, CERT_VALIDITY, the vault and the vault entry of the private key. |
-| `tls/server.crt` | The committed certificate. The private key is in the vault. Not made yet. |
+| `config/config.yaml` | The default configuration of certtool: the certificate file, CERT_NAMES, CERT_VALIDITY, the vault and the vault entry of the private key. |
 
 ## Use the client library
 
@@ -34,7 +33,8 @@ import uuid
 from agent_broker_client import HttpBrokerClient, ReplyEvent, StateEvent, InvalidEvent, SessionGoneError
 
 async def main(username: str, password: str) -> None:
-    async with HttpBrokerClient("https://broker.example:38443", username, password, "voice") as broker:
+    async with HttpBrokerClient("https://broker.example:38443", username, password, "voice",
+                                cert_file="/path/to/server.crt") as broker:
         agents = await broker.list_agents()
         session = await broker.create_session("claude", "my_repo")   # or broker.session("claude", known_id)
         await session.send_command(uuid.uuid4(), "Run the tests")
@@ -48,8 +48,9 @@ async def main(username: str, password: str) -> None:
             print("the session is deleted")
 ```
 
-- `HttpBrokerClient(url, username, password, client_id)` makes the broker client. One process can hold several.
-- Optional parameters: `cert_file` (default `tls/server.crt`), `heartbeat_timeout` (45 s), `reconnect_interval` (5 s), `request_timeout` (15 s), `agent_control_timeout` (AGENT_CONTROL_TIMEOUT, 60 s), `on_connection`.
+- `HttpBrokerClient(url, username, password, client_id, cert_file=...)` makes the broker client. One process can hold several.
+- `cert_file` is required: the certificate of the broker on its host. This repository holds no certificate.
+- Optional parameters: `heartbeat_timeout` (45 s), `reconnect_interval` (5 s), `request_timeout` (15 s), `agent_control_timeout` (AGENT_CONTROL_TIMEOUT, 60 s), `on_connection`.
 - Start, stop and restart of an agent wait `agent_control_timeout`. Each other request waits `request_timeout`.
 - The session client connects its stream when you make it. After each connect, the first event is `state`.
 - After a heartbeat timeout or a closed stream, the client connects again. `connection_state` and `on_connection` give the state of the connection.
@@ -73,5 +74,5 @@ Change of session ([DESIGN.md](../../sdd/DESIGN.md), section 7.3):
 ## Run
 
 - Tests: `run.sh test`. The command runs the type check (mypy, strict) and the tests.
-- New key pair: `run.sh cert`. The tool writes the certificate to `tls/server.crt` and the private key to the vault entry `Agent Broker TLS 01`. Then commit the certificate and the vault change, and restart the broker.
+- New key pair: `run.sh cert --config FILE`. FILE holds the values of the host, e.g. `cert.names` and `cert.file`. A relative `cert.file` starts at the folder of FILE. The tool writes the certificate to `cert.file` and the private key to the vault entry `Agent Broker TLS 01`. Keep FILE and the certificate in the deployment project of the host. Then deploy the certificate and restart the broker.
 - The venv is in `.local_assets/venv`.

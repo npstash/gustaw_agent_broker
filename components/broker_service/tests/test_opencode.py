@@ -51,7 +51,7 @@ def run(test: Test) -> None:
 
 
 def request(model: str = "cloudflare/@cf/openai/gpt-oss-20b", **extra: JsonValue) -> JsonObject:
-    body: JsonObject = {"client": "scanner", "workspace": "example_project", "force": True, "model": model}
+    body: JsonObject = {"client": "example", "workspace": "example_project", "force": True, "model": model}
     body.update(extra)
     return body
 
@@ -88,7 +88,7 @@ def test_models_efforts_and_a_new_session() -> None:
         permissions = body["permissions"]
         assert isinstance(permissions, list) and permissions[0] == {"action": "*", "resource": "*", "effect": "deny"}
         assert session["model"] == "cloudflare/@cf/openai/gpt-oss-20b" and session["effort"] == "auto"
-        assert session["tools"] == policy and session["client"] == "scanner" and session["workspace"] == "example_project"
+        assert session["tools"] == policy and session["client"] == "example" and session["workspace"] == "example_project"
         assert session["agent"] == "opencode" and session["state"] == "idle"
         assert [s["id"] for s in await provider.list_sessions()] == [session["id"]]
 

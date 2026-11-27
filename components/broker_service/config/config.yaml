@@ -36,15 +36,16 @@ language:
   languages: [en, pl]        # LANGUAGES
   threshold: 0.70            # LANGUAGE_THRESHOLD
 
-# The names and the validity of the certificate are in ../client/config/config.yaml.
+# The certificate of the host. A relative path starts at the configuration folder of local.yaml.
+# certtool of the component client makes it.
 cert:
-  file: ../client/tls/server.crt
+  file: server.crt
 
 # Without credentials.vault, each secret comes from its environment variable env, or from the file of <env>_FILE.
 # Give the private key with <env>_FILE: an env file cannot hold a value of more than one line.
-# With credentials.vault (e.g. vault-agent_broker in local.yaml), each secret comes from the vault; dependencies.txt finds it.
+# With credentials.vault (the name of a vault in local.yaml), each secret comes from the vault; dependencies.txt finds it.
 credentials:
-  vault: ""                          # empty: no vault; or the name of the vault, e.g. vault-agent_broker
+  vault: ""                          # empty: no vault; or the name of the vault
   secrets:
     tls_private_key: {entry: "Agent Broker TLS 01", key: private_key, env: AGENT_BROKER_TLS_PRIVATE_KEY}
     api_username: {entry: "Agent Broker API 01", key: username, env: AGENT_BROKER_API_USERNAME}

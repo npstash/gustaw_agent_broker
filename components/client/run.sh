@@ -33,7 +33,7 @@ case "${1:-}" in
         exec "$venv/bin/python" -m agent_broker_client.certtool "$@"
         ;;
     *)
-        echo "usage: run.sh test | cert [--vault-home DIR] [--entry NAME] [--cert FILE] [--days N]" >&2
+        echo "usage: run.sh test | cert [--config FILE] [--vault-home DIR] [--entry NAME] [--cert FILE] [--days N]" >&2
         exit 2
         ;;
 esac

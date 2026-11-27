@@ -1,9 +1,10 @@
-# Configuration of certtool: a new key pair for the broker.
+# Default configuration of certtool: a new key pair for the broker.
 # Relative paths start at the folder of the component client.
+# Give the names and the certificate file of a host with run.sh cert --config FILE.
 cert:
-  file: tls/server.crt
-  names: [broker-host, localhost, 127.0.0.1, 192.0.2.10, broker.example.net]   # CERT_NAMES: DNS names and IP addresses
-  validity_years: 10                                                         # CERT_VALIDITY
+  file: tls/server.crt                # not committed: deploy it to the configuration folder of the broker
+  names: [localhost, 127.0.0.1]       # CERT_NAMES: DNS names and IP addresses
+  validity_years: 10                  # CERT_VALIDITY
 credentials:
   vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
   secrets:
