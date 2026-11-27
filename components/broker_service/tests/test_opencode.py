@@ -13,7 +13,7 @@ from fake_opencode import PASSWORD, FakeOpencode
 
 from agent_broker_client.jsontypes import JsonObject, JsonValue
 from agent_broker_service.docker import DockerEngine
-from agent_broker_service.errors import AgentError, ContainerMissingError
+from agent_broker_service.errors import AgentError, AgentUnavailableError, ContainerMissingError
 from agent_broker_service.opencode import OpencodeProvider, command_id, message_id, permission_rules
 from agent_broker_service.provider import Event
 
@@ -218,3 +218,105 @@ def test_docker_exec_gives_the_exit_code(tmp_path: Path, monkeypatch: pytest.Mon
             await engine.close()
             await fake.stop()
     asyncio.run(main())
+
+
+def busy(fake: FakeOpencode, sid: str) -> None:
+    """Mark the fake session as working: busy after the last idle."""
+    times = fake.sessions[sid]["time"]
+    assert isinstance(times, dict)
+    times["busy"] = int(time.time() * 1000)
+
+
+async def finish(fake: FakeOpencode, provider: OpencodeProvider, sid: str, emitted: list[tuple[str, JsonObject]],
+                 count: int) -> list[Event]:
+    """Open a session stream, emit the events of OpenCode, and give ``count`` events of the stream."""
+    stream = await provider.open_session_stream(sid)
+    events: list[Event] = []
+    reader = asyncio.create_task(take(events, stream.events(), count))
+    await asyncio.sleep(0.2)
+    for kind, data in emitted:
+        fake.emit(kind, {"sessionID": sid, **data})
+    await asyncio.wait_for(reader, 5)
+    await stream.close()
+    return events
+
+
+def test_a_stream_that_opens_after_the_delivery_gives_the_reply() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        await provider.send_command(sid, {"id": cid, "text": "hello"})
+        busy(fake, sid)       # OpenCode delivered the command before the stream opened: no inbox.delivered
+        events = await finish(fake, provider, sid, [("session.text.ended", {"text": "PONG"}),
+                                                    ("session.execution.succeeded", {})], 3)
+        assert events[0] == ("state", {"session": sid, "state": "working"})
+        assert events[1] == ("reply", {"session": sid, "command_id": cid, "message": "PONG", "language": "en"})
+        assert events[2] == ("state", {"session": sid, "state": "idle"})
+
+    run(test)
+
+
+def test_a_stream_that_opens_before_the_start_keeps_the_command() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        await provider.send_command(sid, {"id": cid, "text": "hello"})   # the session is still idle at OpenCode
+        events = await finish(fake, provider, sid, [("session.execution.started", {}),
+                                                    ("session.text.ended", {"text": "PONG"}),
+                                                    ("session.execution.succeeded", {})], 4)
+        assert [e[0] for e in events] == ["state", "state", "reply", "state"]
+        assert events[2][1]["command_id"] == cid
+
+    run(test)
+
+
+def test_a_failure_without_the_delivery_names_the_command() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        await provider.send_command(sid, {"id": cid, "text": "hello"})
+        busy(fake, sid)
+        events = await finish(fake, provider, sid, [("session.execution.failed", {"error": {"message": "x"}})], 3)
+        assert events[1][0] == "notice" and events[1][1]["command_id"] == cid
+        assert events[1][1]["kind"] == "command_failed"
+
+    run(test)
+
+
+def test_after_a_restart_the_stream_reads_the_command_from_the_context() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        busy(fake, sid)       # a command of the broker before its restart: this provider does not know it
+        fake.context[sid] = [{"id": message_id(cid), "type": "user", "text": "hello"}]
+        events = await finish(fake, provider, sid, [("session.text.ended", {"text": "PONG"}),
+                                                    ("session.execution.succeeded", {})], 3)
+        assert events[1] == ("reply", {"session": sid, "command_id": cid, "message": "PONG", "language": "en"})
+
+    run(test)
+
+
+def test_a_missed_text_comes_from_the_context() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        await provider.send_command(sid, {"id": cid, "text": "hello"})
+        busy(fake, sid)
+        fake.context[sid] = [{"id": message_id(cid), "type": "user", "text": "hello"},
+                             {"id": "msg_a", "type": "assistant", "content": [{"type": "text", "text": "Late"}]}]
+        events = await finish(fake, provider, sid, [("session.execution.succeeded", {})], 3)
+        assert events[1] == ("reply", {"session": sid, "command_id": cid, "message": "Late", "language": "en"})
+
+    run(test)
+
+
+def test_a_failed_prompt_leaves_no_running_command() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        with pytest.raises(AgentUnavailableError):
+            await provider.send_command(sid, {"id": str(uuid.uuid4()), "text": "fail"})
+        busy(fake, sid)
+        events = await finish(fake, provider, sid, [("session.execution.succeeded", {})], 2)
+        assert [e[0] for e in events] == ["state", "state"]     # no command of the broker: no reply
+
+    run(test)

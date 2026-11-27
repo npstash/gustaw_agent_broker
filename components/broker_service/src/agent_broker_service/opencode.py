@@ -3,6 +3,10 @@
 The provider keeps no state on disk. The session settings stay in the session at OpenCode: the model in its
 model, the tool policy in its permission rules and its metadata. The live events come from the event stream of
 OpenCode (``/api/event``), filtered by the session.
+
+The provider keeps the running command of each session in memory (``RunningCommands``). A session stream that
+opens after OpenCode delivered the command gets the command ID from it. Without an entry, e.g. after a restart
+of the broker, the stream reads the command ID from the context of the session.
 """
 from __future__ import annotations
 
@@ -90,6 +94,55 @@ def _data(answer: JsonValue, where: str) -> JsonObject:
     return data
 
 
+class RunningCommands:
+    """The running command of each session: session ID -> command ID. Only in memory."""
+
+    def __init__(self) -> None:
+        self._commands: dict[str, str] = {}
+
+    def get(self, session_id: str) -> str | None:
+        return self._commands.get(session_id)
+
+    def set(self, session_id: str, command: str) -> None:
+        self._commands[session_id] = command
+
+    def end(self, session_id: str, command: str | None = None) -> None:
+        """Remove the entry of the session; with ``command``, only if it is still that command."""
+        if command is None or self._commands.get(session_id) == command:
+            self._commands.pop(session_id, None)
+
+
+def _text_of(item: JsonObject) -> str:
+    """The text parts of an assistant item of the context."""
+    content = item.get("content")
+    if not isinstance(content, list):
+        return ""
+    return "".join(str(part.get("text", "")) for part in content if isinstance(part, dict) and part.get("type") == "text")
+
+
+def last_command(items: list[JsonValue]) -> str | None:
+    """The command ID of the last user message of the context, or None for a message of another tool."""
+    for item in reversed(items):
+        if isinstance(item, dict) and item.get("type") == "user" and isinstance(item.get("id"), str):
+            return command_id(str(item["id"]))
+    return None
+
+
+def reply_text(items: list[JsonValue], command: str) -> str:
+    """The text of the assistant items after the user message of the command."""
+    wanted = message_id(command)
+    text, found = "", False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "user":
+            found = item.get("id") == wanted
+            text = ""
+        elif found and item.get("type") == "assistant":
+            text = _text_of(item) or text
+    return text
+
+
 def _state(info: JsonObject) -> str:
     """``working`` while the last change of the session is busy, else ``idle``."""
     times = info.get("time")
@@ -113,6 +166,7 @@ class OpencodeProvider(AgentProvider):
         self._reply_replay = reply_replay
         self._session: aiohttp.ClientSession | None = None
         self._started = time.monotonic()
+        self._running = RunningCommands()
 
     @property
     def agent(self) -> str:
@@ -279,6 +333,7 @@ class OpencodeProvider(AgentProvider):
 
     async def delete_session(self, session_id: str) -> None:
         await self._call("DELETE", f"/api/session/{quote(session_id, safe='')}")
+        self._running.end(session_id)
 
     async def set_session_settings(self, session_id: str, request: JsonObject) -> JsonObject:
         model = request.get("model")
@@ -296,12 +351,19 @@ class OpencodeProvider(AgentProvider):
         info = await self._info(session_id)
         if _state(info) == "working":
             raise AgentError(409, messages.error_body("busy", "a command runs"))
+        message = message_id(command)
+        # Before the prompt: a session stream can open before OpenCode delivers the command.
+        self._running.set(session_id, command)
         try:
             await self._call("POST", f"/api/session/{quote(session_id, safe='')}/prompt",
-                             {"id": message_id(command), "text": str(request["text"])})
+                             {"id": message, "text": str(request["text"])})
         except AgentError as exc:
             if exc.status == 409:       # the same message ID: the command exists
                 return {"id": command, "status": "duplicate"}
+            self._running.end(session_id, command)
+            raise
+        except AgentUnavailableError:
+            self._running.end(session_id, command)
             raise
         return {"id": command, "status": "accepted"}
 
@@ -311,12 +373,14 @@ class OpencodeProvider(AgentProvider):
 
     # --- streams -------------------------------------------------------------------------
 
-    async def _last_reply(self, session_id: str) -> JsonObject | None:
-        """The last reply of the session, if it is not older than REPLY_REPLAY, for the start of a stream."""
+    async def _context(self, session_id: str) -> list[JsonValue]:
+        """The items of the context of the session: the user messages and the replies."""
         context = await self._call("GET", f"/api/session/{quote(session_id, safe='')}/context")
         items = context.get("data") if isinstance(context, dict) else None
-        if not isinstance(items, list):
-            return None
+        return items if isinstance(items, list) else []
+
+    def _last_reply(self, session_id: str, items: list[JsonValue]) -> JsonObject | None:
+        """The last reply of the session, if it is not older than REPLY_REPLAY, for the start of a stream."""
         user_id: str | None = None
         reply: JsonObject | None = None
         for item in items:
@@ -327,9 +391,7 @@ class OpencodeProvider(AgentProvider):
             elif item.get("type") == "assistant":
                 times = item.get("time") if isinstance(item.get("time"), dict) else {}
                 done = times.get("completed") if isinstance(times, dict) else None
-                content = item.get("content")
-                text = "".join(str(part.get("text", "")) for part in content if isinstance(part, dict)
-                               and part.get("type") == "text") if isinstance(content, list) else ""
+                text = _text_of(item)
                 command = command_id(user_id) if user_id else None
                 if command and isinstance(done, (int, float)) and time.time() - done / 1000 <= self._reply_replay:
                     reply = {"session": session_id, "command_id": command, "message": text,
@@ -338,12 +400,22 @@ class OpencodeProvider(AgentProvider):
 
     async def open_session_stream(self, session_id: str) -> UpstreamStream:
         info = await self._info(session_id)
-        first: list[Event] = [("state", {"session": session_id, "state": _state(info)})]
-        replay = await self._last_reply(session_id)
+        state = _state(info)
+        first: list[Event] = [("state", {"session": session_id, "state": state})]
+        items = await self._context(session_id)
+        replay = self._last_reply(session_id, items)
         if replay is not None:
             first.append(("reply", replay))
+        running = self._running.get(session_id)
+        if state == "idle" and replay is not None and replay["command_id"] == running:
+            self._running.end(session_id, running)   # the command ended before the stream; the replay gives its reply
+        elif state == "working" and running is None:
+            command = last_command(items)       # e.g. after a restart of the broker during the command
+            if command is not None:
+                self._running.set(session_id, command)
         response = await self._open_events()
-        return OpencodeStream(response, session_id, first, self._detect, f"{self._agent} session {session_id}")
+        return OpencodeStream(response, session_id, first, self._detect, f"{self._agent} session {session_id}",
+                              self._running, self._context)
 
     async def open_agent_stream(self) -> UpstreamStream:
         return OpencodeStream(await self._open_events(), None, [], self._detect, f"{self._agent} agent stream")
@@ -368,16 +440,19 @@ class OpencodeStream(UpstreamStream):
     """
 
     def __init__(self, response: aiohttp.ClientResponse, session_id: str | None, first: list[Event],
-                 detect: Detect, label: str):
+                 detect: Detect, label: str, running: RunningCommands | None = None,
+                 context: Callable[[str], Awaitable[list[JsonValue]]] | None = None):
         self._response = response
         self._session = session_id
         self._first = first
         self._detect = detect
         self.label = label
-        self._command: str | None = None    # the command of the running turn
+        self._running = running if running is not None else RunningCommands()
+        self._context = context
+        self._command: str | None = None    # the command of the running turn, from inbox.delivered
         self._text = ""                     # the last text of the running turn
 
-    def _map(self, item: JsonObject) -> list[Event]:
+    async def _map(self, item: JsonObject) -> list[Event]:
         kind = item.get("type")
         data = item.get("data") if isinstance(item.get("data"), dict) else {}
         payload = data if isinstance(data, dict) else {}
@@ -399,12 +474,20 @@ class OpencodeStream(UpstreamStream):
             text = payload.get("text")
             self._text = text if isinstance(text, str) else self._text
             return []
-        command = self._command
+        # The stream can miss inbox.delivered: it opened later. The provider knows the command.
+        command = self._command or self._running.get(sid)
+        if kind in ("session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"):
+            self._running.end(sid, command)
+            self._command = None
         if kind == "session.execution.succeeded":
             events: list[Event] = []
             if command is not None:
-                events.append(("reply", {"session": sid, "command_id": command, "message": self._text,
-                                         "language": self._detect(self._text) or "en"}))
+                text = self._text
+                if not text and self._context is not None:
+                    text = reply_text(await self._context(sid), command)     # the stream missed text.ended
+                events.append(("reply", {"session": sid, "command_id": command, "message": text,
+                                         "language": self._detect(text) or "en"}))
+            self._text = ""
             return [*events, ("state", {"session": sid, "state": "idle"})]
         if kind in ("session.execution.failed", "session.execution.interrupted"):
             failed = kind == "session.execution.failed"
@@ -435,7 +518,7 @@ class OpencodeStream(UpstreamStream):
                         continue
                     if not isinstance(item, dict):
                         continue
-                    for name, body in self._map(item):
+                    for name, body in await self._map(item):
                         try:
                             yield name, messages.validate_agent_event(name, body)
                         except messages.MessageError as exc:

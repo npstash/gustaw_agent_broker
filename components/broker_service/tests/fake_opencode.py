@@ -115,6 +115,8 @@ class FakeOpencode:
         sid = request.match_info["id"]
         body = request["body"]
         assert isinstance(body, dict)
+        if body.get("text") == "fail":       # a prompt that OpenCode refuses
+            return web.json_response({"_tag": "InternalError"}, status=500)
         known = self.prompts.setdefault(sid, [])
         if any(p["id"] == body["id"] for p in known):
             return web.json_response({"_tag": "ConflictError"}, status=409)

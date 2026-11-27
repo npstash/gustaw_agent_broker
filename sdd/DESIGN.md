@@ -284,8 +284,8 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 | List sessions | `GET /api/session`, all pages (`cursor.next`), without the child sessions. The client ID is `metadata.client`. |
 | Read a session | `GET /api/session/{id}`. The state is `working` while `time.busy` is later than `time.idle`, else `idle`. |
 | Delete a session | `DELETE /api/session/{id}`. |
-| Session stream | The `state` from `GET /api/session/{id}`; the reply replay from `GET /api/session/{id}/context`; then the live events of `GET /api/event` with the `sessionID` of the session. |
-| Send a command | `POST /api/session/{id}/prompt` with `id`: `msg_` and the hex digits of the command ID, and `text`. The same ID again gives `409` at OpenCode: the provider answers `duplicate`. `409` `busy` in the state `working`. |
+| Session stream | The `state` from `GET /api/session/{id}`; the reply replay from `GET /api/session/{id}/context`; then the live events of `GET /api/event` with the `sessionID` of the session. A stream of a `working` session with no running command (e.g. after a restart of the broker) takes the command ID from the last user message of the context. |
+| Send a command | The provider records the command as the running command of the session. Then `POST /api/session/{id}/prompt` with `id`: `msg_` and the hex digits of the command ID, and `text`. A refused prompt removes the record. The same ID again gives `409` at OpenCode: the provider answers `duplicate`. `409` `busy` in the state `working`. |
 | Interrupt | `POST /api/session/{id}/interrupt`. |
 | Agent stream | `GET /api/event`. OpenCode sends no lifecycle and no log events: the stream gives no event. |
 | Start, stop, restart | Docker only. OpenCode has no such call. |
@@ -293,15 +293,16 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 
 | OpenCode event (`/api/event`) | Broker event |
 | --- | --- |
-| `session.inbox.delivered` | none: `inboxID` gives the command ID of the turn |
+| `session.inbox.delivered` | none: `inboxID` gives the command ID of the turn. A stream that opened later has no such event: it uses the running command of the session. |
 | `session.execution.started` | `state` `working` |
 | `session.step.started`, `session.tool.called` | `status` |
 | `session.text.ended` | none: the last text of the turn |
-| `session.execution.succeeded` | `reply` with the last text of the turn and the detected language; then `state` `idle` |
+| `session.execution.succeeded` | `reply` with the last text of the turn and the detected language; then `state` `idle`. Without a text of the turn, the text comes from the context. |
 | `session.execution.failed` | `notice` `command_failed` with the error; then `state` `idle` |
 | `session.execution.interrupted` | `notice` `command_dropped`; then `state` `idle` |
 
-- The provider keeps no state. The settings of a session stay in the session at OpenCode.
+- The provider keeps no state on disk. The settings of a session stay in the session at OpenCode.
+- The provider keeps the running command of each session in memory. The end of the turn, a replayed reply of the command at the start of a stream and the deletion of the session remove it.
 - `GET /api/experimental/session/{id}/log?follow=true` gives no live events in OpenCode 2.2.7. The provider does not use it.
 - A turn can end with no text, e.g. a model that gives only reasoning: the reply is empty.
 - The language detection uses the languages of LANGUAGES (`en`, `pl`) and LANGUAGE_THRESHOLD (0.70). Below the threshold, the reply has the language `en`.
