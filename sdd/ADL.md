@@ -31,35 +31,35 @@ The commit ID of each entry of 20261114 and of 20261115-01 is the last commit of
 - 20261114-25 Nestor 40d86ef1d4e4 certtool and the certificate are in this repository; a new key is made directly in the vault of the broker
 - 20261114-26 Nestor 40d86ef1d4e4 The certificate has the names of the target host, localhost and 127.0.0.1
 - 20261115-01 Nestor 40d86ef1d4e4 The broker container uses the host network
-- 20261115-02 Nestor 73761e8f9317 The session ID does not change during the life of a session, also when the agent starts a new chat inside it
-- 20261115-03 Nestor 73761e8f9317 The reconnect interval is a value of the client library; the session client and the broker client wait it between two tries
-- 20261117-01 Nestor ba1ac6c4bd5c The broker API defines the failure behaviour for all agents: command_failed for the command, then state idle or stopped; in stopped a new command tries the session again; the broker sends command_failed when an upstream session stream ends in the state working
-- 20261117-02 Opus-5.5 ba1ac6c4bd5c A new command gets 409 busy only in the state working
-- 20261117-03 Opus-5.5 ba1ac6c4bd5c An interrupt gives command_dropped and then state idle; with no running command it does nothing and answers the current state
-- 20261117-04 Opus-5.5 ba1ac6c4bd5c A lifecycle notice on a session stream tells only about the session; command_dropped is a command that ended with no result
-- 20261117-05 Opus-5.5 ba1ac6c4bd5c A workspace is the root or one folder directly under it; a nested path and a symbolic link give 400
-- 20261117-06 Opus-5.5 ba1ac6c4bd5c An agent can lose a session that has no command yet when the agent restarts; its ID then gives 404
-- 20261117-07 Opus-5.5 ba1ac6c4bd5c The provider opencode sends only the state and the reply replay from the session log, then the live events
-- 20261117-08 Opus-5.5 f15d8f0daf47 Each agent has the configuration keys logging.levels.<component>; the level selects the log events of the component
-- 20261117-09 Opus-5.5 f15d8f0daf47 A command text that starts with / is a slash command of the agent; an unknown slash command gets a reply that says so
-- 20261120-01 Nestor cb09fc0815a3 The container runs as the user of update.sh, not as a fixed UID; HOME and the TLS scratch folder are tmpfs folders of that user
-- 20261120-02 Nestor cb09fc0815a3 The local configuration is in the XDG configuration folder of that user below gustaw/agent_broker, not in the clone
-- 20261120-03 Nestor cb09fc0815a3 update.sh writes the variables of compose.yaml into .env of the project folder; the operator values are in config.env of the configuration folder
-- 20261121-01 Nestor 3ab720748196 The image holds the code in /opt/gustaw/agent_broker and no part of maya-agent-kit; a host with a vault mounts the vault and the vault tool beside it with compose.override.yaml
-- 20261121-02 Nestor 3ab720748196 The service gets its secrets through secrets_proxy: from the vault if credentials.vault is set, else from environment variables; the default configuration names no vault
-- 20261121-03 Nestor 3ab720748196 HOME is the tmpfs /home/gustaw/agent_broker; the configuration folder is mounted read-only at its XDG path below HOME
-- 20261121-04 Nestor 3ab720748196 prepare.sh writes the deploy folder ${HOME}/containers/agent_broker; update.sh builds and tags the image, then runs prepare.sh and docker compose up -d; --no-up skips the last step
-- 20261122-01 Nestor 0807b1cf1751 A session has a model, an effort and a tool policy; the agent stores them with the session, and the broker stores none of them
-- 20261122-02 Nestor 0807b1cf1751 The model is required when a session is created; no setting of an agent or of the broker gives a model to a session; a client keeps its own choice and starts with DEFAULT_MODEL of the agent
-- 20261122-03 Nestor 0807b1cf1751 The effort is optional; a session without it gets DEFAULT_EFFORT of the agent; an agent without efforts gives only auto
-- 20261122-04 Nestor 0807b1cf1751 GET /models and GET /efforts list the values of an agent with its defaults; PUT .../settings changes the model or the effort of one session
-- 20261122-05 Nestor 0807b1cf1751 The tool policy has an allowlist and a denylist with the tool names of the agent; it is fixed for the life of the session; the default is each tool
-- 20261122-06 Nestor 0807b1cf1751 The provider opencode maps a tool policy to a predefined agent profile of OpenCode; a policy without a profile gives 400 unsupported_tools
-- 20261122-07 Opus-5.5 0807b1cf1751 Model IDs and tool names are the names of the agent; the broker does not translate them
-- 20261123-01 Nestor eab17763373c The provider opencode maps a tool policy to permission rules of the session at OpenCode; it needs no agent profiles
-- 20261123-02 Nestor eab17763373c The sessions of the provider opencode use the default agent of OpenCode, with a deny of the reads of env files
-- 20261123-03 Nestor eab17763373c A model of the provider opencode is providerID/id; its only effort is auto
-- 20261123-04 Opus-5.5 eab17763373c The provider opencode takes the live events from the event stream of OpenCode (/api/event), filtered by the session; the last reply comes from the context of the session
-- 20261127-01 Nestor 5e25656cfa3a This repository holds no certificate; the deployment project of the host keeps it, and the broker reads server.crt of its configuration folder
-- 20261127-02 Nestor 5e25656cfa3a certtool reads the names and the file of the certificate from a configuration file of the host in the deployment project
-- 20261127-03 Nestor 5e25656cfa3a The client library has no default certificate; each client gives the certificate of its host
+- 20261115-02 Nestor 6c3e9d4ffe35 The session ID does not change during the life of a session, also when the agent starts a new chat inside it
+- 20261115-03 Nestor 6c3e9d4ffe35 The reconnect interval is a value of the client library; the session client and the broker client wait it between two tries
+- 20261117-01 Nestor 4700d4250cca The broker API defines the failure behaviour for all agents: command_failed for the command, then state idle or stopped; in stopped a new command tries the session again; the broker sends command_failed when an upstream session stream ends in the state working
+- 20261117-02 Opus-5.5 4700d4250cca A new command gets 409 busy only in the state working
+- 20261117-03 Opus-5.5 4700d4250cca An interrupt gives command_dropped and then state idle; with no running command it does nothing and answers the current state
+- 20261117-04 Opus-5.5 4700d4250cca A lifecycle notice on a session stream tells only about the session; command_dropped is a command that ended with no result
+- 20261117-05 Opus-5.5 4700d4250cca A workspace is the root or one folder directly under it; a nested path and a symbolic link give 400
+- 20261117-06 Opus-5.5 4700d4250cca An agent can lose a session that has no command yet when the agent restarts; its ID then gives 404
+- 20261117-07 Opus-5.5 4700d4250cca The provider opencode sends only the state and the reply replay from the session log, then the live events
+- 20261117-08 Opus-5.5 be0951f226c5 Each agent has the configuration keys logging.levels.<component>; the level selects the log events of the component
+- 20261117-09 Opus-5.5 be0951f226c5 A command text that starts with / is a slash command of the agent; an unknown slash command gets a reply that says so
+- 20261120-01 Nestor 6fd32a86c357 The container runs as the user of update.sh, not as a fixed UID; HOME and the TLS scratch folder are tmpfs folders of that user
+- 20261120-02 Nestor 6fd32a86c357 The local configuration is in the XDG configuration folder of that user below gustaw/agent_broker, not in the clone
+- 20261120-03 Nestor 6fd32a86c357 update.sh writes the variables of compose.yaml into .env of the project folder; the operator values are in config.env of the configuration folder
+- 20261121-01 Nestor 2593b76852a0 The image holds the code in /opt/gustaw/agent_broker and no part of maya-agent-kit; a host with a vault mounts the vault and the vault tool beside it with compose.override.yaml
+- 20261121-02 Nestor 2593b76852a0 The service gets its secrets through secrets_proxy: from the vault if credentials.vault is set, else from environment variables; the default configuration names no vault
+- 20261121-03 Nestor 2593b76852a0 HOME is the tmpfs /home/gustaw/agent_broker; the configuration folder is mounted read-only at its XDG path below HOME
+- 20261121-04 Nestor 2593b76852a0 prepare.sh writes the deploy folder ${HOME}/containers/agent_broker; update.sh builds and tags the image, then runs prepare.sh and docker compose up -d; --no-up skips the last step
+- 20261122-01 Nestor 3f93e766c07c A session has a model, an effort and a tool policy; the agent stores them with the session, and the broker stores none of them
+- 20261122-02 Nestor 3f93e766c07c The model is required when a session is created; no setting of an agent or of the broker gives a model to a session; a client keeps its own choice and starts with DEFAULT_MODEL of the agent
+- 20261122-03 Nestor 3f93e766c07c The effort is optional; a session without it gets DEFAULT_EFFORT of the agent; an agent without efforts gives only auto
+- 20261122-04 Nestor 3f93e766c07c GET /models and GET /efforts list the values of an agent with its defaults; PUT .../settings changes the model or the effort of one session
+- 20261122-05 Nestor 3f93e766c07c The tool policy has an allowlist and a denylist with the tool names of the agent; it is fixed for the life of the session; the default is each tool
+- 20261122-06 Nestor 3f93e766c07c The provider opencode maps a tool policy to a predefined agent profile of OpenCode; a policy without a profile gives 400 unsupported_tools
+- 20261122-07 Opus-5.5 3f93e766c07c Model IDs and tool names are the names of the agent; the broker does not translate them
+- 20261123-01 Nestor 02259bbc6cda The provider opencode maps a tool policy to permission rules of the session at OpenCode; it needs no agent profiles
+- 20261123-02 Nestor 02259bbc6cda The sessions of the provider opencode use the default agent of OpenCode, with a deny of the reads of env files
+- 20261123-03 Nestor 02259bbc6cda A model of the provider opencode is providerID/id; its only effort is auto
+- 20261123-04 Opus-5.5 02259bbc6cda The provider opencode takes the live events from the event stream of OpenCode (/api/event), filtered by the session; the last reply comes from the context of the session
+- 20261127-01 Nestor a706db9a437d This repository holds no certificate; the deployment project of the host keeps it, and the broker reads server.crt of its configuration folder
+- 20261127-02 Nestor a706db9a437d certtool reads the names and the file of the certificate from a configuration file of the host in the deployment project
+- 20261127-03 Nestor a706db9a437d The client library has no default certificate; each client gives the certificate of its host
