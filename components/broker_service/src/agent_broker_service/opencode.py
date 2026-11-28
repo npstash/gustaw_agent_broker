@@ -451,6 +451,7 @@ class OpencodeStream(UpstreamStream):
         self._context = context
         self._command: str | None = None    # the command of the running turn, from inbox.delivered
         self._text = ""                     # the last text of the running turn
+        self._retrying = False              # a retry is scheduled, and the model gave no output since
 
     async def _map(self, item: JsonObject) -> list[Event]:
         kind = item.get("type")
@@ -463,13 +464,21 @@ class OpencodeStream(UpstreamStream):
             inbox = payload.get("inboxID")
             self._command = command_id(inbox) if isinstance(inbox, str) else None
             self._text = ""
+            self._retrying = False
             return []
+        if kind == "session.retry.scheduled":
+            return self._retry(sid, payload)
+        if kind in ("session.text.started", "session.reasoning.started", "session.tool.input.started") and self._retrying:
+            self._retrying = False          # the model answers again
+            return [("status", {"session": sid, "kind": "activity", "text": "thinking"})]
         if kind == "session.execution.started":
             return [("state", {"session": sid, "state": "working"})]
         if kind == "session.tool.called":
+            self._retrying = False
             return [("status", {"session": sid, "kind": "activity", "text": "using a tool"})]
         if kind == "session.step.started":
-            return [("status", {"session": sid, "kind": "activity", "text": "thinking"})]
+            # OpenCode starts a step also for each new try: no output yet.
+            return [] if self._retrying else [("status", {"session": sid, "kind": "activity", "text": "thinking"})]
         if kind == "session.text.ended":
             text = payload.get("text")
             self._text = text if isinstance(text, str) else self._text
@@ -479,6 +488,7 @@ class OpencodeStream(UpstreamStream):
         if kind in ("session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"):
             self._running.end(sid, command)
             self._command = None
+            self._retrying = False
         if kind == "session.execution.succeeded":
             events: list[Event] = []
             if command is not None:
@@ -499,6 +509,17 @@ class OpencodeStream(UpstreamStream):
                                           "command_id": command, "text": text}))
             return [*events, ("state", {"session": sid, "state": "idle"})]
         return []
+
+    def _retry(self, sid: str, payload: JsonObject) -> list[Event]:
+        """``status`` ``retry`` for a scheduled retry: the number of the next try, its time and the error."""
+        attempt, at, error = payload.get("attempt"), payload.get("at"), payload.get("error")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 2 or not isinstance(at, (int, float)):
+            log.warning("%s: a retry event without attempt or time; it is not passed", self.label)
+            return []
+        self._retrying = True
+        message = error.get("message") if isinstance(error, dict) else None
+        return [("status", {"session": sid, "kind": "retry", "text": str(message or "the request failed"),
+                            "attempt": attempt, "retry_at": _iso(at)})]
 
     async def events(self) -> AsyncIterator[Event]:
         for first in self._first:

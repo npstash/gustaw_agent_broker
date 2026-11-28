@@ -559,7 +559,7 @@
       "additionalProperties": false
     },
     "AgentApiStatusEvent": {
-      "description": "Status event of the agent API (a session stream). The field agent is optional.",
+      "description": "Status event of the agent API (a session stream). The field agent is optional. kind activity: what the agent does now. kind retry: the agent waits to try a failed request to its model again; attempt and retry_at are required.",
       "type": "object",
       "properties": {
         "agent": {
@@ -574,11 +574,21 @@
         },
         "kind": {
           "enum": [
-            "activity"
+            "activity",
+            "retry"
           ]
         },
         "text": {
           "type": "string"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "kind retry: the number of the next try. The first try is 1."
+        },
+        "retry_at": {
+          "$ref": "#/$defs/UtcDateTime",
+          "description": "kind retry: the time of the next try"
         }
       },
       "required": [
@@ -586,7 +596,29 @@
         "kind",
         "text"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "retry"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "attempt",
+          "retry_at"
+        ]
+      },
+      "else": {
+        "properties": {
+          "attempt": false,
+          "retry_at": false
+        }
+      }
     },
     "AgentApiReplyEvent": {
       "description": "Reply event of the agent API (a session stream). The field agent is optional.",

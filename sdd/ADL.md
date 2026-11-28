@@ -64,3 +64,4 @@ The commit ID of each entry of 20261114 and of 20261115-01 is the last commit of
 - 20261127-02 Nestor a706db9a437d certtool reads the names and the file of the certificate from a configuration file of the host in the deployment project
 - 20261127-03 Nestor a706db9a437d The client library has no default certificate; each client gives the certificate of its host
 - 20261127-04 Nestor eb34faa4272a The provider opencode keeps the running command of each session in memory; a session stream that misses the delivery of the command uses it, and without it the command and the reply come from the context of the session
+- 20261128-01 Nestor aed29395cc98 The status event has the kind retry with the number and the time of the next try; each agent reports its own retries with it

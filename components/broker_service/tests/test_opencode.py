@@ -320,3 +320,42 @@ def test_a_failed_prompt_leaves_no_running_command() -> None:
         assert [e[0] for e in events] == ["state", "state"]     # no command of the broker: no reply
 
     run(test)
+
+
+def test_retries_give_retry_status_and_no_thinking_until_output() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        cid = str(uuid.uuid4())
+        await provider.send_command(sid, {"id": cid, "text": "hello"})
+        error: JsonObject = {"type": "provider.transport", "message": "Timed out waiting for response headers"}
+        at = 1795818090139
+        events = await finish(fake, provider, sid, [
+            ("session.execution.started", {}),
+            ("session.step.started", {}),                                             # the first try
+            ("session.retry.scheduled", {"attempt": 2, "at": at, "error": error}),
+            ("session.step.started", {}),                                             # the second try: no output
+            ("session.retry.scheduled", {"attempt": 3, "at": at + 60000, "error": error}),
+            ("session.step.started", {}),
+            ("session.text.started", {}),                                             # the model answers
+            ("session.text.ended", {"text": "PONG"}),
+            ("session.execution.succeeded", {})], 8)
+        assert [e[0] for e in events] == ["state", "state", "status", "status", "status", "status", "reply", "state"]
+        assert events[2][1]["text"] == "thinking"
+        assert events[3][1] == {"session": sid, "kind": "retry", "text": "Timed out waiting for response headers",
+                                "attempt": 2, "retry_at": "2026-11-27T22:21:30.139Z"}
+        assert (events[4][1]["kind"], events[4][1]["attempt"]) == ("retry", 3)
+        assert events[5][1] == {"session": sid, "kind": "activity", "text": "thinking"}
+        assert events[6][1]["message"] == "PONG"
+
+    run(test)
+
+
+def test_a_retry_event_without_a_time_is_not_passed() -> None:
+    async def test(fake: FakeOpencode, provider: OpencodeProvider) -> None:
+        sid = str((await provider.create_session(request()))["id"])
+        await provider.send_command(sid, {"id": str(uuid.uuid4()), "text": "hello"})
+        events = await finish(fake, provider, sid, [("session.retry.scheduled", {"attempt": 2}),
+                                                    ("session.execution.failed", {"error": {"message": "x"}})], 3)
+        assert [e[0] for e in events] == ["state", "notice", "state"]
+
+    run(test)

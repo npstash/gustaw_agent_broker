@@ -70,6 +70,7 @@ class ErrorCode(enum.StrEnum):
 
 class StatusKind(enum.StrEnum):
     ACTIVITY = "activity"
+    RETRY = "retry"         # the agent waits to try a failed request to its model again
 
 
 class NoticeKind(enum.StrEnum):
@@ -179,10 +180,13 @@ class StateEvent:
 
 @dataclass(frozen=True)
 class StatusEvent:
+    """A status of a session. ``attempt`` and ``retry_at`` are set only for the kind ``retry``."""
     agent: str
     session: str
     kind: StatusKind
     text: str
+    attempt: int | None = None                      # the number of the next try; the first try is 1
+    retry_at: datetime.datetime | None = None       # the time of the next try, in UTC
 
 
 @dataclass(frozen=True)
@@ -240,6 +244,13 @@ def _str(body: JsonObject, key: str) -> str:
     value = body.get(key)
     if not isinstance(value, str):
         raise MessageError(f"{key}: not a string")
+    return value
+
+
+def _int(body: JsonObject, key: str) -> int:
+    value = body.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise MessageError(f"{key}: not an integer")
     return value
 
 
@@ -365,8 +376,11 @@ def parse_event(event: str, body: JsonValue) -> StateEvent | StatusEvent | Reply
     if event == "state":
         return StateEvent(agent=agent, session=_str(checked, "session"), state=SessionState(_str(checked, "state")))
     if event == "status":
-        return StatusEvent(agent=agent, session=_str(checked, "session"), kind=StatusKind(_str(checked, "kind")),
-                           text=_str(checked, "text"))
+        kind = StatusKind(_str(checked, "kind"))
+        retry = kind is StatusKind.RETRY
+        return StatusEvent(agent=agent, session=_str(checked, "session"), kind=kind, text=_str(checked, "text"),
+                           attempt=_int(checked, "attempt") if retry else None,
+                           retry_at=_time(checked, "retry_at") if retry else None)
     if event == "reply":
         return ReplyEvent(agent=agent, session=_str(checked, "session"), command_id=_str(checked, "command_id"),
                           message=_str(checked, "message"), language=_str(checked, "language"))

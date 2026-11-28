@@ -1,5 +1,6 @@
 """The message schema: the file, its references, and an example of each message."""
 import copy
+import datetime
 import uuid
 from importlib import resources
 
@@ -68,7 +69,8 @@ VALID: dict[str, list[JsonValue]] = {
             "bad_request", "unauthorized", "not_found", "busy", "workspace_not_found", "agent_unavailable",
             "invalid_setting", "unsupported_tools")],
     "StateEvent": [{**SCOPE, "state": "working"}],
-    "StatusEvent": [{**SCOPE, "kind": "activity", "text": "Reading a file"}],
+    "StatusEvent": [{**SCOPE, "kind": "activity", "text": "Reading a file"},
+                    {**SCOPE, "kind": "retry", "text": "Timed out", "attempt": 2, "retry_at": "2026-11-16T10:00:00Z"}],
     "ReplyEvent": [{**SCOPE, "command_id": CID, "message": "Done", "language": "en"}],
     "NoticeEvent": [
         {**SCOPE, "kind": "command_failed", "command_id": CID, "text": "Failed"},
@@ -79,7 +81,9 @@ VALID: dict[str, list[JsonValue]] = {
     "LogEvent": [{"agent": "claude", "component": "api", "level": "INFO", "time": "10:00:00", "message": "up"}],
     # The events of the agent API: the field agent is optional.
     "AgentApiStateEvent": [{"session": "ses_1", "state": "working"}, {**SCOPE, "state": "idle"}],
-    "AgentApiStatusEvent": [{"session": "ses_1", "kind": "activity", "text": "Reading a file"}],
+    "AgentApiStatusEvent": [{"session": "ses_1", "kind": "activity", "text": "Reading a file"},
+                            {"session": "ses_1", "kind": "retry", "text": "x", "attempt": 4,
+                             "retry_at": "2026-11-16T10:00:00+00:00"}],
     "AgentApiReplyEvent": [{"session": "ses_1", "command_id": CID, "message": "Done", "language": "en"}],
     "AgentApiNoticeEvent": [
         {"session": "ses_1", "kind": "command_failed", "command_id": CID, "text": "Failed"},
@@ -141,7 +145,12 @@ INVALID: dict[str, list[JsonValue]] = {
         {"agent": "claude", "component": "api", "level": "LOUD", "time": "10:00:00", "message": "up"}],
     "AgentApiStateEvent": [{"state": "idle"}, {"session": "ses_1", "state": "busy"},
                            {"session": "ses_1", "state": "idle", "extra": 1}],
-    "AgentApiStatusEvent": [{"session": "ses_1", "kind": "other", "text": "x"}, {"kind": "activity", "text": "x"}],
+    "AgentApiStatusEvent": [
+        {"session": "ses_1", "kind": "other", "text": "x"}, {"kind": "activity", "text": "x"},
+        {"session": "ses_1", "kind": "retry", "text": "x"},                                       # no attempt, no time
+        {"session": "ses_1", "kind": "retry", "text": "x", "attempt": 1, "retry_at": "2026-11-16T10:00:00Z"},
+        {"session": "ses_1", "kind": "retry", "text": "x", "attempt": 2, "retry_at": "2026-11-16T11:00:00+01:00"},
+        {"session": "ses_1", "kind": "activity", "text": "x", "attempt": 2}],                     # only for retry
     "AgentApiReplyEvent": [{"session": "ses_1", "command_id": CID, "message": "Done"}],
     "AgentApiNoticeEvent": [
         {"kind": "command_failed", "command_id": CID, "text": "x"}, {"kind": "lifecycle", "text": "x"}],
@@ -279,3 +288,13 @@ def test_summary_of_an_error_has_no_content_of_the_message() -> None:
 def test_data_with_too_many_levels_is_a_message_error() -> None:
     with pytest.raises(messages.MessageError):
         models.decode_json("[" * 200_000)
+
+
+def test_a_retry_status_gives_the_attempt_and_the_time() -> None:
+    body: JsonObject = {**SCOPE, "kind": "retry", "text": "Timed out", "attempt": 3, "retry_at": "2026-11-16T10:00:05Z"}
+    event = models.parse_event("status", body)
+    assert isinstance(event, models.StatusEvent)
+    assert (event.kind, event.attempt) == (models.StatusKind.RETRY, 3)
+    assert event.retry_at == datetime.datetime(2026, 11, 16, 10, 0, 5, tzinfo=datetime.UTC)
+    activity = models.parse_event("status", {**SCOPE, "kind": "activity", "text": "Reading"})
+    assert isinstance(activity, models.StatusEvent) and activity.attempt is None and activity.retry_at is None

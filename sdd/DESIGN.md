@@ -182,7 +182,7 @@ A stream of a `stopped` session gets `state` `stopped` and starts nothing.
 | Event | Meaning |
 | --- | --- |
 | `state` | The state of the session ("Session state"). |
-| `status` | A short text for a person about the current activity of the agent, e.g. the tool that it uses. A client can speak it. |
+| `status` | A short text for a person about the current activity of the agent, e.g. the tool that it uses. A client can speak it. Kind `activity`: what the agent does now. Kind `retry`: a request of the agent to its model failed, and the agent tries again; `attempt` is the number of the next try (the first try is 1), `retry_at` its time in UTC, `text` the error. Each agent sends `retry` for its own retries. |
 | `reply` | The answer to a command, with its `command_id` and its `language`. |
 | `notice` | A failure or a change of the session ("Failures"). |
 | `log` | A log line of the agent, with its component and level. |
@@ -295,7 +295,9 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 | --- | --- |
 | `session.inbox.delivered` | none: `inboxID` gives the command ID of the turn. A stream that opened later has no such event: it uses the running command of the session. |
 | `session.execution.started` | `state` `working` |
-| `session.step.started`, `session.tool.called` | `status` |
+| `session.step.started`, `session.tool.called` | `status` `activity`. After a `retry`, a `session.step.started` gives no event: the new try has no output yet. |
+| `session.retry.scheduled` | `status` `retry` with `attempt`, `retry_at` (from `at`) and the error message |
+| `session.text.started`, `session.reasoning.started`, `session.tool.input.started` after a `retry` | `status` `activity` `thinking`: the model answers again |
 | `session.text.ended` | none: the last text of the turn |
 | `session.execution.succeeded` | `reply` with the last text of the turn and the detected language; then `state` `idle`. Without a text of the turn, the text comes from the context. |
 | `session.execution.failed` | `notice` `command_failed` with the error; then `state` `idle` |
