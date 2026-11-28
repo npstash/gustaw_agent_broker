@@ -21,7 +21,7 @@ cert:
 credentials:
   vault: vault-agent_broker
   secrets:
-    tls_private_key: {{entry: "Agent Broker TLS 01", key: private_key}}
+    tls_private_key: {{entry: "Example TLS 01"}}
 """
 
 
@@ -83,8 +83,7 @@ def test_default_configuration_follows_the_design() -> None:
     assert conf.get_list("cert.names") == ["localhost", "127.0.0.1"]
     assert conf.get_int("cert.validity_years") == 10
     assert conf.get_str("credentials.vault") == "vault-agent_broker"
-    assert conf.get_str_map("credentials.secrets.tls_private_key") == {
-        "entry": "Agent Broker TLS 01", "key": "private_key"}
+    assert conf.get_str_map("credentials.secrets.tls_private_key") == {"key": "private_key"}   # no vault entry
     assert vault.resolve_path(certtool.PROJECT, conf.get_str("cert.file")) == certtool.PROJECT / "tls" / "server.crt"
 
 
@@ -101,7 +100,7 @@ def test_main_uses_the_configured_names_and_validity(tmp_path: Path, capsys: pyt
     assert 729 <= days <= 730
     assert len(fake.calls) == 1
     key_pem, vault_home, entry, key_name = fake.calls[0]
-    assert (vault_home, entry, key_name) == (home, "Agent Broker TLS 01", "private_key")
+    assert (vault_home, entry, key_name) == (home, "Example TLS 01", "private_key")
     assert key_pem.startswith("-----BEGIN PRIVATE KEY-----")
     # The key goes only to the vault function: not to the output, not to a file.
     captured = capsys.readouterr()
@@ -140,11 +139,12 @@ def test_host_configuration_replaces_the_names_and_places_the_certificate(tmp_pa
     host = tmp_path / "host"
     host.mkdir()
     local = host / "certtool.yaml"
-    local.write_text("cert:\n  file: server.crt\n  names: [broker.example.net, 192.0.2.10]\n", encoding="utf-8")
+    local.write_text("cert:\n  file: server.crt\n  names: [broker.example.net, 192.0.2.10]\n"
+                     "credentials:\n  secrets:\n    tls_private_key: {entry: \"Example TLS 02\"}\n", encoding="utf-8")
     assert certtool.main(["--config", str(local), "--vault-home", str(tmp_path)], key_writer=fake.write) == 0
     cert = x509.load_pem_x509_certificate((host / "server.crt").read_bytes())
     assert san(cert) == ({"broker.example.net"}, {"192.0.2.10"})
-    assert fake.calls[0][2] == "Agent Broker TLS 01"
+    assert fake.calls[0][2:] == ("Example TLS 02", "private_key")   # the entry of the host, the key of the project
 
 
 def test_missing_host_configuration_stops_before_any_write(tmp_path: Path) -> None:
@@ -153,3 +153,17 @@ def test_missing_host_configuration_stops_before_any_write(tmp_path: Path) -> No
         certtool.main(["--config", str(tmp_path / "none.yaml"), "--vault-home", str(tmp_path),
                        "--cert", str(tmp_path / "c.crt")], key_writer=fake.write)
     assert fake.calls == [] and not (tmp_path / "c.crt").exists()
+
+
+def test_missing_vault_entry_stops_before_any_write(tmp_path: Path) -> None:
+    fake = FakeVault()
+    local = tmp_path / "certtool.yaml"
+    local.write_text("cert:\n  names: [broker.example.net]\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        certtool.main(["--config", str(local), "--vault-home", str(tmp_path), "--cert", str(tmp_path / "c.crt")],
+                      key_writer=fake.write)
+    assert fake.calls == [] and not (tmp_path / "c.crt").exists()
+    # --entry gives the entry without a configuration of the host.
+    assert certtool.main(["--config", str(local), "--vault-home", str(tmp_path), "--cert", str(tmp_path / "c.crt"),
+                          "--entry", "Example TLS 03"], key_writer=fake.write) == 0
+    assert fake.calls[0][2] == "Example TLS 03"

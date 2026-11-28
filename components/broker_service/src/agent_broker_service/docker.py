@@ -1,13 +1,15 @@
-"""Container control: direct HTTP calls on the Docker socket.
+"""Container control: the interface ContainerEngine, and its implementation on the Docker socket.
 
-The module uses the Docker Engine API with no version prefix in the path. The engine then
-uses its newest API version. Only these calls are necessary: inspect, start, stop, restart
-of a container, and the event stream of the containers.
+``DockerEngine`` makes direct HTTP calls on the Docker socket. It uses the Docker Engine API with no version prefix
+in the path. The engine then uses its newest API version. Only these calls are necessary: inspect, start, stop,
+restart of a container, and the event stream of the containers. A host with the host operation service uses
+``HostopsEngine`` of the module hostops instead.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -49,7 +51,8 @@ class ContainerEvent:
     exit_code: str | None
 
 
-def _state(value: JsonValue) -> ContainerState:
+def container_state(value: JsonValue) -> ContainerState:
+    """The ContainerState of a Docker state text. Raise DockerUnavailableError for an unknown state."""
     if isinstance(value, str):
         try:
             return ContainerState(value)
@@ -63,7 +66,54 @@ def _object(value: JsonValue) -> JsonObject:
     return value if isinstance(value, dict) else {}
 
 
-class DockerEngine:
+def parse_event(body: JsonValue) -> ContainerEvent | None:
+    """The lifecycle event of a Docker event object, or None for another event."""
+    event = _object(body)
+    action = event.get("Action")
+    attributes = _object(_object(event.get("Actor")).get("Attributes"))
+    name = attributes.get("name")
+    if event.get("Type") != "container" or action not in LIFECYCLE_ACTIONS or not isinstance(name, str):
+        return None
+    code = attributes.get("exitCode")
+    return ContainerEvent(name, str(action), code if isinstance(code, str) and action == "die" else None)
+
+
+class ContainerEngine(ABC):
+    """The container control of the broker: inspect, start, stop and restart a container, and the lifecycle events.
+
+    Errors: ContainerMissingError if no container has the name; DockerUnavailableError if the engine does not
+    answer, refuses the call or gives an unexpected answer.
+    """
+
+    @abstractmethod
+    async def inspect(self, name: str) -> ContainerInfo:
+        """The state of the container. ``missing`` if no container has the name."""
+
+    @abstractmethod
+    async def start(self, name: str) -> None:
+        """Start the container. A running container stays as it is."""
+
+    @abstractmethod
+    async def stop(self, name: str) -> None:
+        """Stop the container. A stopped container stays as it is."""
+
+    @abstractmethod
+    async def restart(self, name: str) -> None:
+        """Restart the container."""
+
+    @abstractmethod
+    def events(self, names: Iterable[str]) -> AsyncIterator[ContainerEvent]:
+        """Give each lifecycle event of the named containers. End when the engine ends the stream.
+
+        Raise DockerUnavailableError if the stream does not open or breaks.
+        """
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close each connection to the engine."""
+
+
+class DockerEngine(ContainerEngine):
     """The calls on the Docker socket. ``socket_path`` is the path of the Unix socket."""
 
     def __init__(self, socket_path: str, *, inspect_timeout: float, control_timeout: float):
@@ -108,7 +158,7 @@ class DockerEngine:
             raise DockerUnavailableError(f"inspect {name}: Docker answered {status}")
         state = _object(_object(body).get("State")).get("Status")
         working_dir = _object(_object(body).get("Config")).get("WorkingDir")
-        return ContainerInfo(_state(state), working_dir if isinstance(working_dir, str) else "")
+        return ContainerInfo(container_state(state), working_dir if isinstance(working_dir, str) else "")
 
     async def _control(self, name: str, action: str) -> None:
         status, body = await self._call("POST", f"/containers/{quote(name, safe='')}/{action}", self.control_timeout)
@@ -128,22 +178,6 @@ class DockerEngine:
 
     async def restart(self, name: str) -> None:
         await self._control(name, "restart")
-
-    async def run(self, name: str, command: list[str]) -> int:
-        """Run a command in the container as its user, and give its exit code. No shell: ``command`` is the argv."""
-        status, body = await self._call("POST", f"/containers/{quote(name, safe='')}/exec", self.inspect_timeout,
-                                        {"Cmd": list[JsonValue](command), "AttachStdout": True, "AttachStderr": True})
-        if status == 404:
-            raise ContainerMissingError(f"no container {name}")
-        exec_id = _object(body).get("Id")
-        if status != 201 or not isinstance(exec_id, str):
-            raise DockerUnavailableError(f"exec in {name}: Docker answered {status}")
-        await self._call("POST", f"/exec/{exec_id}/start", self.control_timeout, {"Detach": False, "Tty": False})
-        status, body = await self._call("GET", f"/exec/{exec_id}/json", self.inspect_timeout)
-        code = _object(body).get("ExitCode")
-        if status != 200 or not isinstance(code, int):
-            raise DockerUnavailableError(f"exec in {name}: no exit code")
-        return code
 
     async def events(self, names: Iterable[str]) -> AsyncIterator[ContainerEvent]:
         """Give each lifecycle event of the named containers. End when Docker ends the stream.
@@ -173,11 +207,4 @@ class DockerEngine:
             body: JsonValue = json.loads(line)
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None
-        event = _object(body)
-        action = event.get("Action")
-        attributes = _object(_object(event.get("Actor")).get("Attributes"))
-        name = attributes.get("name")
-        if event.get("Type") != "container" or action not in LIFECYCLE_ACTIONS or not isinstance(name, str):
-            return None
-        code = attributes.get("exitCode")
-        return ContainerEvent(name, str(action), code if isinstance(code, str) and action == "die" else None)
+        return parse_event(body)

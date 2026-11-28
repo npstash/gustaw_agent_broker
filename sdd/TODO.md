@@ -14,6 +14,10 @@ Open work and open issues. Check an item when its work is committed.
 
 - [x] 6a. Provider `opencode` with the language detection (DESIGN, section 6.2.1).
 
+## Vault `vault-agent_broker`
+
+- After the broker runs on the target host with vaultkeeper: unenrol the old clone of the broker from the vault, and delete its key file (flow 7.6 of the design of gustaw_vaultkeeper).
+
 ## Open issues
 
 The open issues are in [DESIGN.md](DESIGN.md), section 11.

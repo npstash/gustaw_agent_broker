@@ -17,7 +17,7 @@ from agent_broker_client.jsontypes import JsonObject
 from agent_broker_client.messages import MessageError
 
 from . import logs
-from .docker import ContainerEvent, DockerEngine
+from .docker import ContainerEngine, ContainerEvent
 from .errors import AgentError, AgentUnavailableError, DockerUnavailableError
 from .provider import UpstreamStream
 from .router import AgentEntry, Router
@@ -65,7 +65,7 @@ def container_text(event: ContainerEvent) -> str:
 class EventProxy:
     """The streams of the broker. ``reconnect_interval`` is the wait between two tries to open an upstream stream."""
 
-    def __init__(self, router: Router, docker: DockerEngine, *, heartbeat: float, queue_limit: int,
+    def __init__(self, router: Router, docker: ContainerEngine, *, heartbeat: float, queue_limit: int,
                  reconnect_interval: float, sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
         self.router = router
         self.docker = docker

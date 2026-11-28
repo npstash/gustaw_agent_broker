@@ -5,7 +5,8 @@ cert:
   file: tls/server.crt                # not committed: deploy it to the configuration folder of the broker
   names: [localhost, 127.0.0.1]       # CERT_NAMES: DNS names and IP addresses
   validity_years: 10                  # CERT_VALIDITY
+# The file of --config gives the vault entry of the private key, e.g. tls_private_key: {entry: "<vault entry>"}.
 credentials:
   vault: vault-agent_broker          # the name of the vault; dependencies.txt finds it
   secrets:
-    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key}
+    tls_private_key: {key: private_key}

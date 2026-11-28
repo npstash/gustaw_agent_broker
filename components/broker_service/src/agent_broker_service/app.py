@@ -1,7 +1,7 @@
 """Start and stop the broker service.
 
-``main`` reads the configuration, opens the secrets from the vault, makes the TLS context
-and runs the broker until SIGTERM or SIGINT. The broker keeps no state on disk.
+``main`` reads the configuration, opens the secrets (vaultkeeper, the vault or the environment), makes the TLS
+context and runs the broker until SIGTERM or SIGINT. The broker keeps no state on disk.
 """
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ from agent_broker_client import dependencies, secrets_proxy
 
 from . import logs, router, settings, tls
 from .api import Api
-from .docker import DockerEngine
+from .docker import ContainerEngine, DockerEngine
+from .hostops import HostopsEngine
 from .proxy import EventProxy
 from .settings import Settings
 from .version import version
@@ -24,6 +25,21 @@ from .version import version
 log = logs.get("broker")
 # The wait of the aiohttp runner for open requests at the stop, in seconds.
 SHUTDOWN_TIMEOUT_S = 2.0
+
+
+def container_engine(conf: Settings) -> ContainerEngine:
+    """The container control: hostops if HOSTOPS_SOCKET is set, else the Docker socket."""
+    if conf.hostops_socket:
+        return HostopsEngine(conf.hostops_socket, inspect_timeout=conf.docker_inspect_timeout,
+                             control_timeout=conf.docker_control_timeout)
+    return DockerEngine(conf.docker_socket, inspect_timeout=conf.docker_inspect_timeout,
+                        control_timeout=conf.docker_control_timeout)
+
+
+def open_broker_secrets(conf: cfg.ConfigFile, values: Settings) -> secrets_proxy.Secrets:
+    """The secrets of the start (settings.start_secrets): from vaultkeeper, from the vault or from the environment."""
+    return secrets_proxy.open_secrets(settings.credentials(conf, settings.start_secrets(values)),
+                                      lambda name: dependencies.find(name, settings.PROJECT))
 
 
 class Broker:
@@ -35,10 +51,9 @@ class Broker:
     def __init__(self, conf: Settings, secrets: secrets_proxy.Secrets, ssl_context: ssl.SSLContext):
         self.settings = conf
         self.ssl_context = ssl_context
-        self.docker = DockerEngine(conf.docker_socket, inspect_timeout=conf.docker_inspect_timeout,
-                                   control_timeout=conf.docker_control_timeout)
+        self.docker = container_engine(conf)
         opencode = secrets.get_secret("opencode_password") if "opencode_password" in settings.start_secrets(conf) else None
-        self.router = router.build(conf, router.factories(opencode, self.docker))
+        self.router = router.build(conf, router.factories(opencode))
         self.proxy = EventProxy(self.router, self.docker, heartbeat=conf.heartbeat_interval,
                                 queue_limit=conf.queue_limit, reconnect_interval=conf.reconnect_interval)
         self.api = Api(self.router, self.docker, self.proxy, secrets.get_secret("api_username"), secrets.get_secret("api_password"))
@@ -102,12 +117,7 @@ def main() -> int:
         conf = settings.load()
         values = settings.from_config(conf)
         logs.setup(values.log_level)
-        credentials = conf.section("credentials")
-        refs = credentials.get("secrets")
-        wanted = settings.start_secrets(values)
-        start = {name: ref for name, ref in refs.items() if name in wanted} if isinstance(refs, dict) else refs
-        secrets = secrets_proxy.open_secrets({**credentials, "secrets": start},
-                                             lambda name: dependencies.find(name, settings.PROJECT))
+        secrets = open_broker_secrets(conf, values)
         context = tls.server_context(values.cert_file, secrets.get_secret("tls_private_key"), settings.TLS_SCRATCH)
         broker = Broker(values, secrets, context)
     except (cfg.ConfigError, secrets_proxy.SecretError, dependencies.DependencyError, OSError, ssl.SSLError) as exc:

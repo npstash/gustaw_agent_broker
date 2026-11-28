@@ -110,11 +110,20 @@ def cert_base(conf: cfg.ConfigFile) -> Path:
     return PROJECT
 
 
+def configured_entry(conf: cfg.ConfigFile) -> str:
+    """The vault entry of the private key. The project names no vault entry: the file of --config gives it."""
+    entry = conf.get("credentials.secrets.tls_private_key.entry", "")
+    if not isinstance(entry, str) or not entry:
+        raise cfg.ConfigError("give the vault entry of the private key: credentials.secrets.tls_private_key.entry "
+                              "in the file of --config, or --entry")
+    return entry
+
+
 def main(argv: Sequence[str] | None = None, key_writer: KeyWriter = write_key_to_vault) -> int:
     """Run certtool. ``key_writer`` stores the key; tests give a fake vault."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--vault-home", type=Path, help="default: credentials.vault of the configuration")
-    parser.add_argument("--entry", help="default: credentials.secrets.tls_private_key of the configuration")
+    parser.add_argument("--entry", help="default: credentials.secrets.tls_private_key.entry of the file of --config")
     parser.add_argument("--cert", type=Path, help="default: cert.file of the configuration")
     parser.add_argument("--days", type=int, help="default: cert.validity_years of the configuration")
     parser.add_argument("--config", type=Path, help="the configuration of the host; it replaces default values")
@@ -124,7 +133,7 @@ def main(argv: Sequence[str] | None = None, key_writer: KeyWriter = write_key_to
             raise cfg.ConfigError(f"configuration file not found: {args.config}")
         conf = cfg.ConfigFile(CONFIG_FILE, VALIDATORS, local_path=args.config)
         key_name = conf.get_str("credentials.secrets.tls_private_key.key")
-        entry: str = args.entry or conf.get_str("credentials.secrets.tls_private_key.entry")
+        entry: str = args.entry or configured_entry(conf)
         vault_home: Path = args.vault_home or vault.find(conf.get_str("credentials.vault"), PROJECT)
         cert: Path = args.cert or vault.resolve_path(cert_base(conf), conf.get_str("cert.file"))
         names = cfg.as_str_list("cert.names", conf.get("cert.names"))

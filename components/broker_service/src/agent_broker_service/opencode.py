@@ -7,12 +7,17 @@ OpenCode (``/api/event``), filtered by the session.
 The provider keeps the running command of each session in memory (``RunningCommands``). A session stream that
 opens after OpenCode delivered the command gets the command ID from it. Without an entry, e.g. after a restart
 of the broker, the stream reads the command ID from the context of the session.
+
+The provider checks and makes a workspace folder with the API of OpenCode: ``GET /api/fs/list`` and
+``POST /api/shell``. It needs no Docker.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import codecs
 import json
+import shlex
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -36,8 +41,14 @@ PAGE_LIMIT = 100
 ENV_RULES: list[JsonValue] = [{"action": "read", "resource": "*.env", "effect": "deny"},
                               {"action": "read", "resource": "*.env.*", "effect": "deny"}]
 type Detect = Callable[[str], str | None]
-# Make sure that a workspace folder exists in the container of OpenCode: (path, create) -> it exists now.
-type FolderCheck = Callable[[str, bool], Awaitable[bool]]
+# The wait for the shell command that makes a workspace folder, and the interval of its checks.
+FOLDER_WAIT_S = 5.0
+FOLDER_POLL_S = 0.1
+# The states of a shell command of POST /api/shell that end it. Assumption: OpenCode 2.2.7 gives one of them in
+# "status" or "state" of GET /api/shell/{id}. The provider also checks the folder itself, so an unknown state
+# only makes the wait longer.
+SHELL_END_STATES = frozenset({"exited", "completed", "complete", "done", "finished", "succeeded", "success",
+                              "failed", "error", "killed", "stopped", "timeout", "cancelled"})
 
 
 def message_id(command_id: str) -> str:
@@ -85,6 +96,27 @@ def _model_id(ref: JsonValue) -> str:
 def _model_ref(model: str) -> JsonObject:
     provider, _, model_id = model.partition("/")
     return {"id": model_id, "providerID": provider}
+
+
+def shell_ended(shell: JsonValue) -> bool:
+    """True if the shell command of ``GET /api/shell/{id}`` has ended: an end state or an exit code."""
+    data = shell.get("data") if isinstance(shell, dict) else None
+    if not isinstance(data, dict):
+        return False
+    for key in ("exitCode", "exit_code", "exit"):
+        value = data.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return True
+    for key in ("status", "state"):
+        value = data.get(key)
+        if isinstance(value, str) and value.lower() in SHELL_END_STATES:
+            return True
+    return False
+
+
+def mkdir_command(path: str) -> str:
+    """The shell command that makes the folder ``path`` and its parents. ``shlex.quote`` keeps the path one word."""
+    return f"mkdir -p -- {shlex.quote(path)}"
 
 
 def _data(answer: JsonValue, where: str) -> JsonObject:
@@ -155,14 +187,16 @@ def _state(info: JsonObject) -> str:
 
 class OpencodeProvider(AgentProvider):
     def __init__(self, agent: str, url: str, password: str, request_timeout: float, workspace_root: str,
-                 detect: Detect, folders: FolderCheck, reply_replay: float = 600.0):
+                 detect: Detect, reply_replay: float = 600.0, folder_wait: float = FOLDER_WAIT_S,
+                 folder_poll: float = FOLDER_POLL_S):
         self._agent = agent
         self._url = URL(url.rstrip("/"))
         self._auth = "Basic " + base64.b64encode(f"opencode:{password}".encode()).decode()
         self._timeout = request_timeout
         self._root = workspace_root.rstrip("/") or "/"
         self._detect = detect
-        self._folders = folders
+        self._folder_wait = folder_wait
+        self._folder_poll = folder_poll
         self._reply_replay = reply_replay
         self._session: aiohttp.ClientSession | None = None
         self._started = time.monotonic()
@@ -181,15 +215,19 @@ class OpencodeProvider(AgentProvider):
         if self._session is not None:
             await self._session.close()
 
-    async def _call(self, method: str, path: str, body: JsonObject | None = None,
-                    params: dict[str, str] | None = None) -> JsonValue:
+    async def _request(self, method: str, path: str, body: JsonObject | None = None,
+                       params: dict[str, str] | None = None) -> tuple[int, bytes]:
+        """The status and the body of one request. Raise AgentUnavailableError if OpenCode is not reachable."""
         try:
             async with self._http().request(method, self._url.with_path(path), json=body, params=params,
                                             timeout=aiohttp.ClientTimeout(total=self._timeout)) as answer:
-                raw = await answer.read()
-                status = answer.status
+                return answer.status, await answer.read()
         except (aiohttp.ClientError, OSError, TimeoutError) as exc:
             raise AgentUnavailableError(f"{self._agent}: {method} {path}: OpenCode is not reachable: {exc}") from None
+
+    async def _call(self, method: str, path: str, body: JsonObject | None = None,
+                    params: dict[str, str] | None = None) -> JsonValue:
+        status, raw = await self._request(method, path, body, params)
         text = raw[:300].decode("utf-8", "replace")
         if status == 404:
             raise AgentError(404, messages.error_body("not_found", "no such session"))
@@ -204,6 +242,56 @@ class OpencodeProvider(AgentProvider):
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise AgentUnavailableError(f"{self._agent}: {method} {path}: the answer is not JSON") from None
         return value
+
+    # --- workspace folders ----------------------------------------------------------------
+
+    async def _folder_exists(self, path: str) -> bool:
+        """``GET /api/fs/list``: 200 means that the folder exists, 404 that it does not. Each other answer is an error."""
+        status, raw = await self._request("GET", "/api/fs/list", params={"path": path})
+        if status == 200:
+            return True
+        if status == 404:
+            return False
+        text = raw[:300].decode("utf-8", "replace")
+        raise AgentUnavailableError(f"{self._agent}: GET /api/fs/list: OpenCode answered {status}: {text}")
+
+    async def _make_folder(self, path: str) -> bool:
+        """Run ``mkdir -p`` in the container of OpenCode with ``POST /api/shell``. Wait for the folder or the end.
+
+        Give True if the folder exists after the wait of FOLDER_WAIT.
+        """
+        started = await self._call("POST", "/api/shell", {"command": mkdir_command(path)})
+        shell = started.get("data") if isinstance(started, dict) else None
+        shell_id = shell.get("id") if isinstance(shell, dict) else None
+        ended = False
+        end = time.monotonic() + self._folder_wait
+        while True:
+            if await self._folder_exists(path):
+                return True
+            if ended or time.monotonic() >= end:
+                break
+            if isinstance(shell_id, str) and shell_id:
+                try:
+                    ended = shell_ended(await self._call("GET", f"/api/shell/{quote(shell_id, safe='')}"))
+                except AgentError as exc:       # no state: the check of the folder decides
+                    log.debug("%s: no state of the shell command %s: %s", self._agent, shell_id, exc)
+                    shell_id = None
+            if not ended:
+                await asyncio.sleep(self._folder_poll)
+        output = ""
+        if isinstance(shell_id, str) and shell_id:
+            status, raw = await self._request("GET", f"/api/shell/{quote(shell_id, safe='')}/output")
+            output = raw[:300].decode("utf-8", "replace") if status == 200 else f"(status {status})"
+        log.warning("%s: mkdir did not make the folder %s: %s", self._agent, path, output or "no output")
+        return False
+
+    async def _ensure_folder(self, path: str, create: bool) -> bool:
+        """True if the folder exists. With ``create``, make it first if it is missing."""
+        if await self._folder_exists(path):
+            return True
+        if not create:
+            return False
+        return await self._make_folder(path)
 
     # --- status and configuration ------------------------------------------------------
 
@@ -264,7 +352,7 @@ class OpencodeProvider(AgentProvider):
         name = workspace.strip().removeprefix("./").strip("/") or "."
         if name == ".":
             return ".", self._root
-        if "/" in name or name in ("..",) or name.startswith("."):
+        if "/" in name or name in ("..",) or name.startswith(".") or any(ord(c) < 32 or ord(c) == 127 for c in name):
             raise AgentError(400, messages.error_body("bad_request", "the workspace must be the root or one folder below it"))
         return name, f"{self._root}/{name}"
 
@@ -297,7 +385,7 @@ class OpencodeProvider(AgentProvider):
         await self._check(model, str(effort) if effort is not None else None)
         name, path = self._workspace(str(request["workspace"]))
         # OpenCode accepts a session in a folder that does not exist, but its prompts then fail.
-        if name != "." and not await self._folders(path, request.get("force") is True):
+        if name != "." and not await self._ensure_folder(path, request.get("force") is True):
             raise AgentError(404, messages.error_body("workspace_not_found", f"no folder {name}"))
         raw_tools = request.get("tools")
         tools = raw_tools if isinstance(raw_tools, dict) else {"allow": None, "deny": []}

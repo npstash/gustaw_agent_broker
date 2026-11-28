@@ -1,14 +1,18 @@
 """A fake OpenCode 2.2.7 for the tests of the provider opencode: the routes and the event shapes that the provider uses.
 
 The shapes come from the OpenAPI document of OpenCode 2.2.7 and from live probes on the target host.
+The routes of the folders: ``GET /api/fs/list`` gives 200 for a folder and 404 with ``FileNotFoundError`` for a
+missing one (probed). ``POST /api/shell`` runs one command; the fake runs only ``mkdir -p -- <path>``.
+Assumption, not probed: the shape ``{"data": {"id", "status", "exitCode"}}`` of the shell answers.
 """
 from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
+import shlex
 import socket
 import time
+from collections.abc import Awaitable, Callable
 
 from aiohttp import web
 
@@ -27,6 +31,11 @@ class FakeOpencode:
         self.context: dict[str, list[JsonValue]] = {}
         self._streams: list[asyncio.Queue[JsonObject]] = []
         self._next = 0
+        # The folders in the container; the shell commands; the status of /api/fs/list instead of the folder check.
+        self.folders: set[str] = set()
+        self.shell_commands: list[JsonObject] = []
+        self.fs_status: int | None = None
+        self.mkdir_works = True
         self.port = 0
         self._runner: web.AppRunner | None = None
 
@@ -43,6 +52,8 @@ class FakeOpencode:
             web.post("/api/session/{id}/model", self._model), web.post("/api/session/{id}/prompt", self._prompt),
             web.post("/api/session/{id}/interrupt", self._interrupt), web.get("/api/session/{id}/context", self._ctx),
             web.get("/api/event", self._events),
+            web.get("/api/fs/list", self._fs_list), web.post("/api/shell", self._shell),
+            web.get("/api/shell/{id}", self._shell_state), web.get("/api/shell/{id}/output", self._shell_output),
         ])
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", 0))
@@ -141,3 +152,29 @@ class FakeOpencode:
                 await response.write(f"data: {json.dumps(item)}\n\n".encode())
         finally:
             self._streams.remove(queue)
+
+    async def _fs_list(self, request: web.Request) -> web.Response:
+        if self.fs_status is not None:
+            return web.json_response({"_tag": "InternalError"}, status=self.fs_status)
+        path = request.query.get("path", "")
+        if path in self.folders:
+            return web.json_response({"data": []})
+        return web.json_response({"_tag": "FileNotFoundError", "message": f"no such file: {path}"}, status=404)
+
+    async def _shell(self, request: web.Request) -> web.Response:
+        body = request["body"]
+        assert isinstance(body, dict) and set(body) == {"command"}
+        self.shell_commands.append(body)
+        argv = shlex.split(str(body["command"]))
+        works = self.mkdir_works and argv[:3] == ["mkdir", "-p", "--"] and len(argv) == 4
+        if works:
+            self.folders.add(argv[3])
+        sid = f"shl_{len(self.shell_commands)}"
+        return web.json_response({"data": {"id": sid, "status": "running"}})
+
+    async def _shell_state(self, request: web.Request) -> web.Response:
+        return web.json_response({"data": {"id": request.match_info["id"], "status": "exited",
+                                           "exitCode": 0 if self.mkdir_works else 1}})
+
+    async def _shell_output(self, request: web.Request) -> web.Response:
+        return web.json_response({"data": [{"text": "mkdir: cannot create directory: Permission denied"}]})

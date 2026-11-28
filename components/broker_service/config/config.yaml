@@ -29,8 +29,10 @@ streams:
   heartbeat_timeout_s: 45    # HEARTBEAT_TIMEOUT
   queue_limit: 100           # STREAM_QUEUE_LIMIT: waiting events of a client stream
 
+# The container control: the Docker socket, or the host operation service hostops (project gustaw_vaultkeeper).
 docker:
-  socket: /var/run/docker.sock   # DOCKER_SOCKET
+  socket: /var/run/docker.sock   # DOCKER_SOCKET: used if hostops is empty
+  hostops: ""                    # HOSTOPS_SOCKET: empty, or the socket of hostops, e.g. /run/gustaw/hostops.sock
 
 language:
   languages: [en, pl]        # LANGUAGES
@@ -44,10 +46,13 @@ cert:
 # Without credentials.vault, each secret comes from its environment variable env, or from the file of <env>_FILE.
 # Give the private key with <env>_FILE: an env file cannot hold a value of more than one line.
 # With credentials.vault (the name of a vault in local.yaml), each secret comes from the vault; dependencies.txt finds it.
+# With credentials.vault and credentials.vaultkeeper, each secret comes from the daemon vaultkeeper of the host.
+# A vault needs the vault entry of each secret: local.yaml gives it, e.g. api_username: {entry: "<vault entry>"}.
 credentials:
   vault: ""                          # empty: no vault; or the name of the vault
+  vaultkeeper: ""                    # empty: no vaultkeeper; or its socket, e.g. /run/gustaw/vaultkeeper.sock
   secrets:
-    tls_private_key: {entry: "Agent Broker TLS 01", key: private_key, env: AGENT_BROKER_TLS_PRIVATE_KEY}
-    api_username: {entry: "Agent Broker API 01", key: username, env: AGENT_BROKER_API_USERNAME}
-    api_password: {entry: "Agent Broker API 01", key: password, env: AGENT_BROKER_API_PASSWORD}
-    opencode_password: {entry: "OpenCode API token", key: password, env: AGENT_BROKER_OPENCODE_PASSWORD}
+    tls_private_key: {key: private_key, env: AGENT_BROKER_TLS_PRIVATE_KEY}
+    api_username: {key: username, env: AGENT_BROKER_API_USERNAME}
+    api_password: {key: password, env: AGENT_BROKER_API_PASSWORD}
+    opencode_password: {key: password, env: AGENT_BROKER_OPENCODE_PASSWORD}

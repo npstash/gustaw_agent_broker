@@ -13,10 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from ruamel.yaml import YAML
 
 PROJECT = Path(__file__).resolve().parents[3]
 LOOKUP = Path("components/client/src/agent_broker_client/dependencies.py")
-SCRIPTS = ("update.sh", "prepare.sh", "compose.yaml")
+SCRIPTS = ("update.sh", "prepare.sh", "compose.yaml", "compose.docker-socket.yaml")
 DEPENDENCIES = """[maya-agent-kit]
 ../maya
 ./maya
@@ -28,6 +29,10 @@ DEPENDENCIES = """[maya-agent-kit]
 # A fake docker. It records its arguments in the file named by FAKE_DOCKER_LOG.
 FAKE_DOCKER = """#!/usr/bin/env bash
 printf 'docker %s\\n' "$*" >> "$FAKE_DOCKER_LOG"
+"""
+# A fake id: prepare.sh stops if the user is not in the group docker. The other calls go to the real id.
+FAKE_ID = """#!/usr/bin/env bash
+if [[ "$*" == "-nG" ]]; then printf '%s docker\\n' "$(/usr/bin/id -nG)"; else exec /usr/bin/id "$@"; fi
 """
 
 
@@ -110,6 +115,8 @@ def layout(tmp_path: Path) -> Layout:
     bin_dir.mkdir()
     (bin_dir / "docker").write_text(FAKE_DOCKER)
     (bin_dir / "docker").chmod(0o755)
+    (bin_dir / "id").write_text(FAKE_ID)
+    (bin_dir / "id").chmod(0o755)
     socket = tmp_path / "docker.sock"
     socket.write_text("")
     home = tmp_path / "home"
@@ -181,6 +188,8 @@ def test_compose_variables_without_a_vault(layout: Layout) -> None:
     assert f"  HOST_UID={os.getuid()}" in result.stdout and f"  HOST_GID={os.getgid()}" in result.stdout
     assert f"  HOST_CONFIG_HOME={layout.home / '.config'}" in result.stdout
     assert "VAULT_DIR" not in result.stdout
+    assert f"  COMPOSE_FILE={layout.deploy_dir}/compose.yaml:{layout.deploy_dir}/compose.docker-socket.yaml" in result.stdout
+    assert "container control: the Docker socket" in result.stdout
 
 
 def test_override_finds_the_vault_and_the_vault_tool(layout: Layout) -> None:
@@ -266,6 +275,9 @@ def test_real_run_pulls_builds_from_the_commit_and_starts(layout: Layout) -> Non
     assert f"DOCKER_GID={layout.socket.stat().st_gid}" in env_lines
     assert f"AGENT_BROKER_DOCKER_SOCKET={layout.socket}" in env_lines
     assert f"VAULT_DIR={(layout.base / 'vault-agent_broker').resolve()}" in env_lines
+    assert (layout.deploy_dir / "compose.docker-socket.yaml").is_file()
+    deploy = layout.deploy_dir
+    assert f"COMPOSE_FILE={deploy}/compose.yaml:{deploy}/compose.docker-socket.yaml:{deploy}/compose.override.yaml" in env_lines
 
 
 def test_real_run_without_override_removes_an_old_override(layout: Layout) -> None:
@@ -283,3 +295,85 @@ def test_real_run_stops_at_the_first_error(layout: Layout) -> None:
     result = layout.run()
     assert result.returncode != 0
     assert layout.docker_calls() == []
+
+
+def load_yaml(path: Path) -> dict[str, object]:
+    data = YAML(typ="safe").load(path.read_text())
+    assert isinstance(data, dict)
+    return data
+
+
+def broker_service(path: Path) -> dict[str, object]:
+    services = load_yaml(path)["services"]
+    assert isinstance(services, dict) and isinstance(services["broker"], dict)
+    return services["broker"]
+
+
+def test_compose_file_is_ready_for_hostops_and_vaultkeeper() -> None:
+    broker = broker_service(PROJECT / "compose.yaml")
+    assert broker["read_only"] is True and broker["security_opt"] == ["no-new-privileges:true"]
+    tmpfs = broker["tmpfs"]
+    assert isinstance(tmpfs, list) and any(str(t).startswith("/tmp:") for t in tmpfs)
+    assert "group_add" not in broker
+    text = (PROJECT / "compose.yaml").read_text()
+    assert "docker.sock" not in text.replace("compose.docker-socket.yaml", "") and "DOCKER_GID" not in text
+    variant = broker_service(PROJECT / "compose.docker-socket.yaml")
+    assert variant["group_add"] == ["${DOCKER_GID:?run prepare.sh}"]
+    volumes = variant["volumes"]
+    assert isinstance(volumes, list) and [v["target"] for v in volumes] == ["/var/run/docker.sock"]
+
+
+def hostops_override(layout: Layout, vaultkeeper_grants: str = 'get:\n  - {vault: vault-example, system: "Example 01"}\n') -> Path:
+    """An override folder of a deployment project with the grants files of a host with hostops."""
+    folder = layout.base / "deployment" / "svc"
+    folder.mkdir(parents=True)
+    (folder / "compose.override.yaml").write_text("services: {}\n")
+    (folder / "hostops-grants.override.yaml").write_text(
+        "list-containers: {}\nwatch-containers:\n  - {container: opencode}\n# config ${HOST_CONFIG_HOME}\n")
+    (folder / "vaultkeeper-grants.override.yaml").write_text(vaultkeeper_grants)
+    return folder / "compose.override.yaml"
+
+
+def test_hostops_grants_give_no_docker_socket(layout: Layout) -> None:
+    override = hostops_override(layout)
+    layout.socket.unlink()                       # a host with hostops needs no Docker socket
+    layout.deploy_dir.mkdir(parents=True)
+    (layout.deploy_dir / "compose.docker-socket.yaml").write_text("old")
+    result = layout.run("--no-up", "--override", str(override))
+    assert result.returncode == 0, result.stderr
+    assert "container control: hostops" in result.stdout
+    env_lines = layout.env_lines()
+    assert not any(line.split("=")[0] in ("DOCKER_GID", "AGENT_BROKER_DOCKER_SOCKET", "COMPOSE_FILE") for line in env_lines)
+    assert not (layout.deploy_dir / "compose.docker-socket.yaml").exists()
+    hostops = layout.deploy_dir / "hostops-grants.override.yaml"
+    assert hostops.read_text() == ("list-containers: {}\nwatch-containers:\n  - {container: opencode}\n"
+                                   f"# config {layout.home / '.config'}\n")
+    vaultkeeper = layout.deploy_dir / "vaultkeeper-grants.override.yaml"
+    assert vaultkeeper.read_text() == 'get:\n  - {vault: vault-example, system: "Example 01"}\n'
+    assert (hostops.stat().st_mode & 0o777, vaultkeeper.stat().st_mode & 0o777) == (0o644, 0o644)
+    assert not (layout.deploy_dir / "hostops-grants.yaml").exists()
+
+
+def test_old_grants_files_go_away_without_a_source(layout: Layout) -> None:
+    layout.deploy_dir.mkdir(parents=True)
+    (layout.deploy_dir / "hostops-grants.override.yaml").write_text("old")
+    result = layout.run("--no-up")
+    assert result.returncode == 0, result.stderr
+    assert not (layout.deploy_dir / "hostops-grants.override.yaml").exists()
+
+
+def test_grants_file_with_a_name_without_a_value_stops(layout: Layout) -> None:
+    override = hostops_override(layout, "get: []\n# ${NO_SUCH_NAME}\n")
+    result = layout.run("--dry-run", "--override", str(override))
+    assert result.returncode != 0 and "NO_SUCH_NAME" in result.stderr
+
+
+def test_missing_service_user_stops(layout: Layout) -> None:
+    override = hostops_override(layout)
+    (override.parent / "config").mkdir()
+    (override.parent / "config" / "service.env").write_text("SERVICE_USER=no_such_user_x\n")
+    result = layout.run("--dry-run", "--override", str(override))
+    assert result.returncode != 0 and "the service user no_such_user_x does not exist" in result.stderr
+    (override.parent / "config" / "service.env").write_text("SERVICE_USER=Bad User\n")
+    result = layout.run("--dry-run", "--override", str(override))
+    assert result.returncode != 0 and "not a valid user name" in result.stderr

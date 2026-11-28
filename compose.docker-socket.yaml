@@ -1,0 +1,13 @@
+# The Agent Broker on a host without the host operation service hostops: the Docker socket and its group.
+# prepare.sh copies this file into the deploy folder and adds it to COMPOSE_FILE of .env only if the host gives no
+# hostops grants (hostops-grants.override.yaml beside the override file). Docker Compose merges it with compose.yaml.
+services:
+  broker:
+    group_add:
+      - "${DOCKER_GID:?run prepare.sh}"
+    volumes:
+      - type: bind
+        source: ${AGENT_BROKER_DOCKER_SOCKET:?run prepare.sh}
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false

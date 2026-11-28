@@ -1,7 +1,11 @@
 # Docker Compose of the Agent Broker. Portable: this file holds no host value.
 # prepare.sh copies this file into the deploy folder ${HOME}/containers/agent_broker/ and writes .env beside it.
-# update.sh builds the image agent_broker:latest. The process runs as the user of prepare.sh, with the group of the
-# Docker socket. HOME is a tmpfs; the folders below it are host folders. A host with a vault adds it with compose.override.yaml.
+# update.sh builds the image agent_broker:latest. The process runs as HOST_UID:HOST_GID of .env: the service user
+# of the host (SERVICE_USER of config/service.env beside the override file), else the user of prepare.sh.
+# The rootfs is read-only. HOME and /tmp are tmpfs; the folders below HOME are host folders.
+# The container control: a host with the host operation service hostops mounts /run/gustaw with compose.override.yaml.
+# A host without hostops gets the Docker socket from compose.docker-socket.yaml: prepare.sh adds it.
+# A host adds the socket of vaultkeeper or a vault with compose.override.yaml.
 name: agent_broker
 
 services:
@@ -13,8 +17,9 @@ services:
     init: true
     stop_grace_period: 20s
     user: "${HOST_UID:?run prepare.sh}:${HOST_GID:?run prepare.sh}"
-    group_add:
-      - "${DOCKER_GID:?run prepare.sh}"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
     # The secrets without a vault: AGENT_BROKER_API_USERNAME, AGENT_BROKER_API_PASSWORD and AGENT_BROKER_TLS_PRIVATE_KEY_FILE.
     env_file:
       - path: ${HOST_CONFIG_HOME:?run prepare.sh}/gustaw/agent_broker/agent_broker.env
@@ -24,13 +29,9 @@ services:
     # HOME also holds the scratch folder of the TLS key.
     tmpfs:
       - /home/gustaw/agent_broker:uid=${HOST_UID},gid=${HOST_GID},mode=0700
+      - /tmp:uid=${HOST_UID},gid=${HOST_GID},mode=0700
     volumes:
-      - type: bind
-        source: ${AGENT_BROKER_DOCKER_SOCKET:?run prepare.sh}
-        target: /var/run/docker.sock
-        bind:
-          create_host_path: false
-      # The configuration: the optional local.yaml.
+      # The configuration: the optional local.yaml, and server.crt.
       - type: bind
         source: ${HOST_CONFIG_HOME:?run prepare.sh}/gustaw/agent_broker
         target: /home/gustaw/agent_broker/.config/gustaw/agent_broker

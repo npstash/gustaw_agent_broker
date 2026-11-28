@@ -65,3 +65,16 @@ The commit ID of each entry of 20261114 and of 20261115-01 is the last commit of
 - 20261127-03 Nestor a706db9a437d The client library has no default certificate; each client gives the certificate of its host
 - 20261127-04 Nestor eb34faa4272a The provider opencode keeps the running command of each session in memory; a session stream that misses the delivery of the command uses it, and without it the command and the reply come from the context of the session
 - 20261128-01 Nestor aed29395cc98 The status event has the kind retry with the number and the time of the next try; each agent reports its own retries with it
+- 20261128-02 Nestor d354b9711eba The project names no vault entry; the local configuration of the host gives the vault entry of each secret, and a local file can add a field to a configuration value that has a validator
+- 20261128-03 Nestor d354b9711eba With credentials.vaultkeeper, the broker service gets its secrets from the daemon vaultkeeper of the host; the container has no vault and no vault tool
+- 20261128-04 Nestor d354b9711eba With docker.hostops, the broker controls the agent containers through hostops: inspect with list-containers, start, stop and restart with control-container, and the events with one watch-containers stream for each agent container; the Docker socket stays for a host without hostops
+- 20261128-05 Nestor d354b9711eba The provider opencode checks a workspace folder with GET /api/fs/list and makes it with mkdir -p through POST /api/shell of OpenCode; it uses no Docker
+- 20261128-06 Nestor d354b9711eba The container has a read-only rootfs, a tmpfs /tmp of the process user and no-new-privileges; with hostops it has no Docker socket and no group of it
+- 20261128-07 Nestor d354b9711eba With a service user in config/service.env beside the override file, the container runs as the service user with its configuration folder; prepare.sh makes it with sudo -u, and the deploy folder stays in the home of the user that deploys
+- 20261128-08 Nestor d354b9711eba prepare.sh copies the grants files of vaultkeeper and hostops into the deploy folder and replaces each ${NAME} with its value in .env
+- 20261128-09 Opus-5.5 d354b9711eba prepare.sh selects hostops when a hostops grants file exists, in the project or beside the override file; else it adds compose.docker-socket.yaml with the Docker socket and its group through COMPOSE_FILE of .env
+- 20261128-10 Opus-5.5 d354b9711eba The container control has the interface ContainerEngine with the implementations HostopsEngine and DockerEngine; DockerEngine has no exec
+- 20261128-11 Opus-5.5 d354b9711eba A failed start, stop or restart through hostops gives 404 if list-containers has no such container, else 503
+- 20261128-12 Opus-5.5 d354b9711eba The provider opencode waits FOLDER_WAIT for a new workspace folder; a folder that is still missing gives 404 workspace_not_found
+- 20261128-13 Opus-5.5 d354b9711eba A workspace name with a control character gives 400
+- 20261128-14 Opus-5.5 d354b9711eba certtool reads the vault entry of the TLS key from the host file of --config or from --entry; without both it stops before it writes

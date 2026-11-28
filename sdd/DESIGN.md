@@ -15,14 +15,14 @@ The Agent Broker gives one API for several coding agents. A client selects an ag
 - Constraints:
   - The broker keeps no state on disk. A restart of the broker loses no data.
   - The broker is the only service with TLS and with a port on the LAN. Each agent listens on `127.0.0.1` only, with no TLS.
-  - The broker controls the agent containers through the Docker socket.
+  - The broker controls the agent containers through the host operation service hostops. A host without hostops gives the Docker socket.
   - Each client uses one agent and one session at a time. Several clients work in parallel.
   - OpenCode is not changed. The broker adapts to its API (version 2.2.7).
   - RAG, the model providers of OpenCode and the inside of each agent are out of scope.
 
 ## 3. System context (C4 level 1)
 
-System boundary: the broker service, its client library and the agent API contract. The agents, Docker and the vault are outside.
+System boundary: the broker service, its client library and the agent API contract. The agents, hostops, vaultkeeper, Docker and the vault are outside.
 
 ```mermaid
 flowchart TD
@@ -30,15 +30,21 @@ flowchart TD
     C2[RAG client<br/><i>client, future</i>] -->|commands, events, HTTPS| B
     B -->|agent API, HTTP on 127.0.0.1| A1[Claude server<br/><i>agent</i>]
     B -->|OpenCode API, HTTP on 127.0.0.1| A2[OpenCode<br/><i>agent</i>]
-    B -->|start, stop, restart, inspect; Docker socket| D[Docker engine<br/><i>external system</i>]
-    B -->|reads secrets| V[(Vault of the broker<br/><i>vault</i>)]
+    B -->|start, stop, restart, inspect, events; Unix socket| H[hostops<br/><i>external system, project gustaw_vaultkeeper</i>]
+    H --> D[Docker engine<br/><i>external system</i>]
+    B -.->|host without hostops: Docker socket| D
+    B -->|gets secrets, Unix socket| K[vaultkeeper<br/><i>external system, project gustaw_vaultkeeper</i>]
+    K -->|reads secrets| V[(Vault of the broker<br/><i>vault</i>)]
+    B -.->|host without vaultkeeper: reads secrets| V
 ```
 
 - **Client:** a program that sends commands to an agent and reads the events. It uses the client library.
 - **Claude server:** the agent for Claude Code. It implements the agent API of this project.
 - **OpenCode:** an agent with its own API. The broker has an adapter for it.
+- **hostops:** the host operation service of the host. It inspects, starts, stops and restarts the granted containers and sends their events (HOSTOPS_SOCKET, section 6.2.2).
+- **vaultkeeper:** the credential service of the host. It gives the granted secrets of the vault through the socket VAULTKEEPER (section 8.4).
 - **Docker engine:** runs the agent containers.
-- **Vault of the broker:** holds the secrets of the broker (section 8.4).
+- **Vault of the broker:** holds the secrets of the broker (section 8.4). A host without vaultkeeper mounts it.
 
 ## 4. Containers (C4 level 2)
 
@@ -52,7 +58,7 @@ flowchart TD
     end
     B -->|agent API| A1[Claude server]
     B -->|OpenCode API| A2[OpenCode]
-    B -->|Docker socket| D[Docker engine]
+    B -->|hostops socket, or Docker socket| D[hostops or Docker engine]
     A1 -.->|implements| SC
     L -.->|uses| SC
 ```
@@ -81,7 +87,8 @@ flowchart TD
     end
     P1 -->|HTTP, SSE| A1[Claude server]
     P2 -->|HTTP, SSE| A2[OpenCode]
-    CC -->|Docker socket| D[Docker engine]
+    CC -->|hostops socket| H[hostops]
+    CC -.->|host without hostops: Docker socket| D[Docker engine]
 ```
 
 - **api:** TLS, HTTP basic authentication, validation of each message against the schema, error answers.
@@ -89,7 +96,7 @@ flowchart TD
 - **provider:** the interface to one kind of agent. The configuration gives the provider of each agent.
   - **agent_api:** passes each call to an agent that implements the agent API.
   - **opencode:** translates each call and each event to and from the OpenCode API (section 6.2.1).
-- **container control:** starts, stops, restarts and inspects the container of an agent.
+- **container control:** starts, stops, restarts and inspects the container of an agent, and gives its lifecycle events. It has two implementations: through hostops, or through the Docker socket (section 6.2.2).
 - **event proxy:** opens one upstream stream for each client session stream. It keeps one upstream agent stream for each agent and merges them into the broker stream. It sends the heartbeat.
 - **language:** detects the language of a reply text. Only the `opencode` provider uses it. An agent that implements the agent API detects the language itself.
 
@@ -258,7 +265,7 @@ Rules for an agent:
 | `run.sh cert` | Makes a new key pair with the names of CERT_NAMES. Writes the certificate to `tls/server.crt` and the key to the vault. |
 | `run.sh test` | Installs the test dependencies in a venv and runs the tests. |
 | `update.sh [--dry-run] [--no-up] [--override FILE]` | Host: pulls the current branch, builds the image, runs `prepare.sh` and runs `docker compose up -d`. `--dry-run` prints the steps and changes nothing. `--no-up` skips the start. |
-| `prepare.sh [--dry-run] [--override FILE]` | Host: makes the configuration folder and the deploy folder with `compose.yaml` and `.env`. With `--override FILE`: the override and the folders of the vault. |
+| `prepare.sh [--dry-run] [--override FILE]` | Host: makes the configuration folder and the deploy folder with `compose.yaml` and `.env`. With `--override FILE`: the override, the folders of the vault, the service user and the grants files. Without hostops grants: `compose.docker-socket.yaml` (section 9). |
 
 ### 6.2 Component interfaces
 
@@ -267,7 +274,7 @@ Rules for an agent:
 | api | The routes of section 6.1.1, the check of each message | clients |
 | router | The provider and the container of an agent name | api |
 | provider | Each operation of section 6.1.1 for one kind of agent: `agent_api` passes it to the agent API (section 6.1.2), `opencode` translates it (section 6.2.1) | router, event proxy |
-| container control | Start, stop, restart and inspect a container | router, event proxy |
+| container control | `ContainerEngine`: start, stop, restart and inspect a container, and its lifecycle events (section 6.2.2) | api, event proxy |
 | event proxy | The upstream streams, the client streams, the broker stream | api |
 | language | The language of a reply text | provider `opencode` |
 
@@ -288,7 +295,9 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 | Send a command | The provider records the command as the running command of the session. Then `POST /api/session/{id}/prompt` with `id`: `msg_` and the hex digits of the command ID, and `text`. A refused prompt removes the record. The same ID again gives `409` at OpenCode: the provider answers `duplicate`. `409` `busy` in the state `working`. |
 | Interrupt | `POST /api/session/{id}/interrupt`. |
 | Agent stream | `GET /api/event`. OpenCode sends no lifecycle and no log events: the stream gives no event. |
-| Start, stop, restart | Docker only. OpenCode has no such call. |
+| Start, stop, restart | The container control only (section 6.2.2). OpenCode has no such call. |
+| Check a workspace folder | `GET /api/fs/list?path=<folder>`: `200` means that the folder exists, `404` that it does not. Each other answer gives `503` `agent_unavailable`. |
+| Make a workspace folder | `POST /api/shell` with `{"command": "mkdir -p -- <folder>"}`. `shlex.quote` makes the folder one word of the command. Then the provider checks the folder and `GET /api/shell/{id}` until the folder exists, the command ends, or FOLDER_WAIT (5 s) is over. The interval is FOLDER_POLL (0.1 s). |
 | Configuration | No key: `GET /config` gives an empty list; a key gives `404`. |
 
 | OpenCode event (`/api/event`) | Broker event |
@@ -308,7 +317,8 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 - `GET /api/experimental/session/{id}/log?follow=true` gives no live events in OpenCode 2.2.7. The provider does not use it.
 - A turn can end with no text, e.g. a model that gives only reasoning: the reply is empty.
 - The language detection uses the languages of LANGUAGES (`en`, `pl`) and LANGUAGE_THRESHOLD (0.70). Below the threshold, the reply has the language `en`.
-- The folder of the workspaces is OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`). OpenCode accepts a session in a folder that does not exist, but its prompts then give `404`. So the provider checks the folder in the container of OpenCode through Docker (`test -d`): a missing folder gives `404` `workspace_not_found`; with `force`, the provider makes it first (`mkdir -p`), as the user of the container.
+- The folder of the workspaces is OPENCODE_WORKSPACE_ROOT (`/home/opencode/workspace`). OpenCode accepts a session in a folder that does not exist, but its prompts then give `404`. So the provider checks the folder with the API of OpenCode: a missing folder gives `404` `workspace_not_found`. With `force`, the provider makes it first with a shell command of OpenCode, as the user of the container. A folder that is still missing after FOLDER_WAIT (5 s) gives `404` `workspace_not_found`, and the log gets the start of the output of the command. The provider needs no Docker.
+- A workspace is the root or one folder directly below it. A name with `/`, a first `.` or a control character gives `400` `bad_request`.
 - The provider follows the session states and the failures of section 6.1.1. It gives no `stopped`: OpenCode continues each session.
 
 **Tools.** OpenCode keeps permission rules for each session. The last rule that matches wins, and the rules of a session come after the rules of the agent. The provider makes the rules of a tool policy:
@@ -323,6 +333,22 @@ The provider `opencode` implements the operations of section 6.1.1 with the HTTP
 - The tool names are the action names of OpenCode, e.g. `webfetch`, `websearch`, `shell`, `edit`.
 - Each tool policy works: the provider gives no `unsupported_tools`.
 - Verified on the target host: a session that denies each action calls no tool; a session that allows `webfetch` and `websearch` calls the web search.
+
+#### 6.2.2 Container control
+
+`ContainerEngine` is the interface of the container control. The api and the event proxy use it. HOSTOPS_SOCKET selects the implementation at the start: `HostopsEngine` if it is set, else `DockerEngine` on DOCKER_SOCKET.
+
+| Operation | `HostopsEngine` (hostops of gustaw_vaultkeeper, DESIGN 6.1.3 and 8.2 of that project) | `DockerEngine` (Docker Engine API) |
+| --- | --- | --- |
+| Inspect | `{"op": "list-containers"}`. The container is the item with exactly `/<name>` in `Names`; its `State` gives the state. No item: `missing`. | `GET /containers/{name}/json` |
+| Start, stop, restart | `{"op": "control-container", "container": <name>, "action": <action>}` | `POST /containers/{name}/{action}` |
+| Lifecycle events | One `{"op": "watch-containers", "containers": [<name>]}` stream for each agent container, merged. Each frame `{"stream": "event", "data": <base64>}` holds one Docker event. The end of one stream ends all. | `GET /events` with a filter of the containers and of the actions |
+
+- Each request of `HostopsEngine` has its own connection: one request line, one answer line. An answer line has a maximum of HOSTOPS_LINE_MAX (16 MiB).
+- The answer `{"ok": false, "error": ...}` gives `503` `agent_unavailable`. After `failed` of a start, stop or restart, the engine inspects the container: a missing container gives `404`.
+- Both implementations give the events `start`, `restart` and `die` (with the exit code) only. hostops removes the command line from each `exec` event.
+- hostops needs a grant entry for each operation and container: `list-containers`, and `watch-containers` and `control-container` for each agent container. The grants are in `hostops-grants.override.yaml` of the deployment project.
+- hostops identifies the container of the broker by its compose labels. The container needs a read-only rootfs, a user other than root, no GID 0, and `no-new-privileges` (section 9).
 
 ## 7. Key flows
 
@@ -351,7 +377,7 @@ sequenceDiagram
 sequenceDiagram
     participant C as Client
     participant B as Broker
-    participant D as Docker
+    participant D as hostops or Docker
     C->>B: POST /agents/a/restart
     B->>D: restart the container of a
     B-->>C: session streams of a closed
@@ -416,16 +442,19 @@ Changes against the schema of the earlier API of the Claude server:
 | `agents.<name>.workspace_root` | The provider `opencode`: OPENCODE_WORKSPACE_ROOT |
 | `streams.heartbeat_interval_s`, `streams.heartbeat_timeout_s` | HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT |
 | `streams.queue_limit` | STREAM_QUEUE_LIMIT of the broker |
-| `docker.socket` | DOCKER_SOCKET |
+| `docker.hostops` | HOSTOPS_SOCKET |
+| `docker.socket` | DOCKER_SOCKET, if HOSTOPS_SOCKET is empty |
 | `language.languages`, `language.threshold` | LANGUAGES, LANGUAGE_THRESHOLD |
 | `cert.file` | The certificate file |
-| `credentials.vault`, `credentials.secrets` | The name of the vault (empty: no vault), and the vault entry and the environment variable of each secret |
+| `credentials.vault`, `credentials.vaultkeeper`, `credentials.secrets` | VAULT, VAULTKEEPER, and the key and the environment variable of each secret. The local file gives the vault entry of each secret |
 
 The client library reads no key of this file. RECONNECT_INTERVAL (5 s), AGENT_CONTROL_TIMEOUT (60 s) and its own STREAM_QUEUE_LIMIT (100) are values of the client library (section 12).
 
 `config/config.yaml` of the component client holds the defaults of `cert.file`, `cert.names` (CERT_NAMES) and `cert.validity_years` (CERT_VALIDITY). certtool reads it. The file of `run.sh cert --config FILE` replaces the values of a host. Keep it in the deployment project of the host.
 
 The file holds all settings of the two supported agents, `claude` and `opencode`. A local file (`local.yaml` of `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`) can change each value of these agents, also `enabled`. It cannot add another agent.
+
+A local file can add a field to a value with a validator, e.g. the vault entry of a secret reference. The validator then checks the merged value. The project names no vault entry: the local file of the host gives each one. The file of `run.sh cert --config FILE` gives the vault entry of the TLS key.
 
 
 Default agents:
@@ -439,45 +468,54 @@ Default agents:
 
 The broker service gets its secrets with `secrets_proxy`, a copy of the reference code of maya-agent-kit. The source is selected one time, at the start:
 
-- `credentials.vault` is set: each secret comes from the vault of `credentials.vault`. There is no fallback.
-- `credentials.vault` is empty: each secret comes from its environment variable, or from the file of `<variable>_FILE`.
+- VAULT and VAULTKEEPER are set: each secret comes from the daemon vaultkeeper of the host, through its socket. A missing or refused secret stops the start. There is no fallback.
+- VAULT is set and VAULTKEEPER is empty: each secret comes from the vault. There is no fallback.
+- VAULT is empty: each secret comes from its environment variable, or from the file of `<variable>_FILE`.
   The service removes these variables from its environment.
 
-| Secret | Vault entry and key | Environment variable | Used by |
+| Secret | Vault key | Environment variable | Used by |
 | --- | --- | --- | --- |
-| TLS private key (PEM) | `Agent Broker TLS 01`, `private_key` | `AGENT_BROKER_TLS_PRIVATE_KEY` (use `_FILE`: an env file holds one line only) | Broker service |
-| API login | `Agent Broker API 01`, `username` and `password` | `AGENT_BROKER_API_USERNAME`, `AGENT_BROKER_API_PASSWORD` | Broker service |
-| OpenCode password | `OpenCode API token`, `password` | `AGENT_BROKER_OPENCODE_PASSWORD` | Provider `opencode` |
+| TLS private key (PEM) | `private_key` | `AGENT_BROKER_TLS_PRIVATE_KEY` (use `_FILE`: an env file holds one line only) | Broker service |
+| API login | `username` and `password` | `AGENT_BROKER_API_USERNAME`, `AGENT_BROKER_API_PASSWORD` | Broker service |
+| OpenCode password | `password` | `AGENT_BROKER_OPENCODE_PASSWORD` | Provider `opencode` |
 
-- `certtool` makes the key of `Agent Broker TLS 01` directly in this vault.
-- A client project keeps its own copy of the login `Agent Broker API 01` in its own vault.
+- The project names no vault entry. The local file of the host gives the vault entry of each secret (section 8.3).
+- The service opens only the secrets of the start: the OpenCode password only if an agent with the provider `opencode` is enabled.
+- A host with vaultkeeper mounts `/run/gustaw` read-only with `compose.override.yaml`. Its grants file `vaultkeeper-grants.override.yaml` grants each vault entry. The container has no vault and no vault tool.
+- `certtool` makes the TLS key directly in this vault.
+- A client project keeps its own copy of the API login in its own vault.
 
 ## 9. Deployment
 
 - The target environment: Ubuntu Server 26.04 LTS, Docker Engine with the rootful daemon.
 - The broker runs as one Docker container on the target host, with the host network.
 - The image `agent_broker:<commit>` and `agent_broker:latest` is built from `ubuntu:26.04` with Python 3.14 in a venv. It holds the committed code of the project (both components) in `/opt/gustaw/agent_broker`. It holds no secret, no vault and no part of maya-agent-kit.
-- A host with a vault mounts the vault at `/opt/gustaw/<vault>` and the vault tool at `/opt/gustaw/maya/tools/auth` with `compose.override.yaml`. The paths of `dependencies.txt` (`../vault-agent_broker`, `../maya`) find them.
-- The container runs as the user of `prepare.sh` on the host (`HOST_UID`, `HOST_GID`), not as root. `compose.yaml` adds the group of the Docker socket (`group_add`, variable `DOCKER_GID`). HOME is the `tmpfs` `/home/gustaw/agent_broker` of that user. It holds the scratch folder of the TLS key.
+- A host with vaultkeeper and hostops mounts `/run/gustaw` read-only at `/run/gustaw` with `compose.override.yaml`. The container then has no vault, no vault tool and no Docker socket.
+- A host with a vault and without vaultkeeper mounts the vault at `/opt/gustaw/<vault>` and the vault tool at `/opt/gustaw/maya/tools/auth` with `compose.override.yaml`. The paths of `dependencies.txt` (`../vault-agent_broker`, `../maya`) find them.
+- The container runs as the service user of the host, if the host names one: `SERVICE_USER` of `config/service.env` beside the override file. Else it runs as the user of `prepare.sh`. `prepare.sh` gives the UID and the GID (`HOST_UID`, `HOST_GID`). The process never runs as root.
+- The container has a read-only rootfs and `no-new-privileges`. hostops and vaultkeeper refuse a caller without them. HOME is the `tmpfs` `/home/gustaw/agent_broker` of the process user. It holds the scratch folder of the TLS key. `/tmp` is a `tmpfs` of the process user too.
+- Container control: a host with hostops gives `hostops-grants.override.yaml` beside the override file, and HOSTOPS_SOCKET in `local.yaml`. Then the container gets no Docker socket and no group of it. A host without hostops grants gets `compose.docker-socket.yaml`: `prepare.sh` copies it into the deploy folder and adds it to `COMPOSE_FILE` of `.env`. It mounts the Docker socket and adds its group (`group_add`, variable `DOCKER_GID`).
 - The project has its own clone on the host, with the dependencies next to it or inside it. `update.sh` works on the repository that it is in:
   1. It checks that HEAD is on a branch and that the clone has no local changes. It pulls the current branch with `git pull --ff-only`. It does not switch the branch, so the clone can stay on a release branch.
   2. It builds the image from the committed code (`git archive` of the project), with the commit ID, date and subject as build arguments.
-  3. It runs `prepare.sh`: the configuration folder, the deploy folder `${HOME}/containers/agent_broker/` with `compose.yaml` and `.env`. With `--override FILE`, `prepare.sh` finds the vault and the vault tool with the lookup of the rule submodule-dependencies.
+  3. It runs `prepare.sh`: the configuration folder, the deploy folder `${HOME}/containers/agent_broker/` with `compose.yaml` and `.env`. With `--override FILE`, `prepare.sh` finds the vault and the vault tool with the lookup of the rule submodule-dependencies, reads the service user, and copies the grants files: `hostops-grants.yaml` and `vaultkeeper-grants.yaml` of the project, and each `.override.yaml` of the folder of FILE, mode 644. It replaces each `${NAME}` with its value in `.env`. The project has no grants file.
   4. It runs `docker compose up -d` in the deploy folder: the container is made again from the new image. `--no-up` skips this step.
 - A restart of the container does not update the code.
 - `compose.yaml` of this project defines the container `agent_broker`, with the host network and the restart policy `unless-stopped`. It holds no value of a host.
-- Mounts: the Docker socket; the configuration folder of the host user `${XDG_CONFIG_HOME:-$HOME/.config}/gustaw/agent_broker/`, read-only, at `~/.config/gustaw/agent_broker/` of the container, for the optional `local.yaml`, the certificate and the secrets. With a vault, `compose.override.yaml` adds the vault, read-write (the vault tool writes its access log), and the vault tool, read-only.
+- Mounts: the configuration folder of the process user `${HOST_CONFIG_HOME}/gustaw/agent_broker/`, read-only, at `~/.config/gustaw/agent_broker/` of the container, for the optional `local.yaml`, the certificate and the secrets. `compose.override.yaml` of a host adds `/run/gustaw`, read-only, or the vault, read-write (the vault tool writes its access log), and the vault tool, read-only. Without hostops, `compose.docker-socket.yaml` adds the Docker socket.
 - The secrets without a vault come from `agent_broker.env` of the configuration folder (`env_file`, optional).
-- `prepare.sh` writes the variables of `compose.yaml` into `.env` of the deploy folder. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET. A variable of the environment replaces a value of `config.env`.
-- With a vault, the clone key of the host clone must open the vault without a terminal.
+- `prepare.sh` writes the variables of the compose files into `.env` of the deploy folder. The operator values are in `config.env` of the configuration folder: AGENT_BROKER_DOCKER_SOCKET, only without hostops. A variable of the environment replaces a value of `config.env`.
+- With a vault and without vaultkeeper, the clone key of the host clone must open the vault without a terminal.
 - The certificate is self-signed: ECDSA P-256, valid CERT_VALIDITY (10 years), names CERT_NAMES. This repository holds no certificate. The deployment project of the host keeps it and deploys it as `server.crt` into the configuration folder (`cert.file`). Each client gives the file of its host.
 
 | Dependency | Container | Use |
 | --- | --- | --- |
 | Python 3.14, aiohttp | Broker service, client library | HTTP server, HTTP client, SSE |
-| Docker Engine API | Broker service | Container control: direct HTTP calls on the Docker socket with aiohttp, no Docker library |
+| hostops (gustaw_vaultkeeper) | Broker service on a host with hostops | Container control: `list-containers`, `control-container`, `watch-containers` |
+| Docker Engine API | Broker service on a host without hostops | Container control: direct HTTP calls on the Docker socket with aiohttp, no Docker library |
+| vaultkeeper (gustaw_vaultkeeper) | Broker service on a host with vaultkeeper | Secrets: `get` |
 | lingua-language-detector | Broker service | Language of the replies of OpenCode |
-| maya-agent-kit (vault tool) | Broker service with a vault, certtool | Secrets |
+| maya-agent-kit (vault tool) | Broker service with a vault and without vaultkeeper, certtool | Secrets |
 
 ## 10. Architecture decisions
 
@@ -486,6 +524,8 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 ## 11. Open issues
 
 - `update.sh` pulls the project. `prepare.sh --override` only finds the vault and the vault tool. A newer project can need a newer vault tool. The owner pulls the dependencies by hand. Open: `update.sh` pulls them too, or they become submodules of the project.
+- Not verified: the answers of `POST /api/shell` and `GET /api/shell/{id}` of OpenCode 2.2.7 have the ID in `data.id` and the end in `data.status`, `data.state` or `data.exitCode`. If not, the provider waits FOLDER_WAIT (5 s) or until the folder exists.
+- Not verified on the target host: Docker Compose reads `COMPOSE_FILE` of `.env` of the deploy folder with `--project-directory`. Only a host without hostops uses it.
 - **MISSING:** the configuration values of OpenCode that `GET` and `PUT /agents/opencode/config` give.
 - Not verified: OpenCode runs a prompt with a repeated ID only one time.
 - Not verified: the working directory of the OpenCode container on the target host is its workspace folder.
@@ -509,7 +549,13 @@ The decisions are in [ADL.md](ADL.md). This project has no ADR.
 | RECONNECT_INTERVAL | 5 | s | — (value of the client library) | Wait of the session client and the broker client between two tries to connect |
 | STREAM_QUEUE_LIMIT | 100 | events | `streams.queue_limit` (broker); value of the client library | Waiting events of a stream at which the side that notices it drops the connection |
 | AGENT_CONTROL_TIMEOUT | 60 | s | — (value of the client library) | Wait of the client library for the answer to start, stop and restart of an agent |
-| DOCKER_SOCKET | `/var/run/docker.sock` | — | `docker.socket` | Path of the Docker socket |
+| DOCKER_SOCKET | `/var/run/docker.sock` | — | `docker.socket` | Path of the Docker socket. Used only if HOSTOPS_SOCKET is empty |
+| HOSTOPS_SOCKET | empty | — | `docker.hostops` | The socket of hostops, e.g. `/run/gustaw/hostops.sock`. Empty: the Docker socket |
+| HOSTOPS_LINE_MAX | 16 | MiB | — | Maximum of one answer line of hostops |
+| VAULT | empty | — | `credentials.vault` | The name of the vault, e.g. `vault-agent_broker`. `dependencies.txt` gives its folder. Empty: the secrets come from the environment |
+| VAULTKEEPER | empty | — | `credentials.vaultkeeper` | The socket of the daemon vaultkeeper, e.g. `/run/gustaw/vaultkeeper.sock`. With VAULT: the secrets come from vaultkeeper. Empty: no vaultkeeper |
+| FOLDER_WAIT | 5 | s | — | The provider `opencode`: maximum wait for a new workspace folder |
+| FOLDER_POLL | 0.1 | s | — | The provider `opencode`: interval of the checks of a new workspace folder |
 | LANGUAGES | `en`, `pl` | — | `language.languages` | Languages of the detection in the provider `opencode` |
 | LANGUAGE_THRESHOLD | 0.70 | — | `language.threshold` | Minimum confidence to change the language |
 | CERT_NAMES | `localhost`, `127.0.0.1`, and the names and addresses of the target host | — | `cert.names` (component client) | Names in the certificate |

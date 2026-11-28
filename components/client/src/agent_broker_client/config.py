@@ -147,8 +147,9 @@ class ConfigFile:
     Without ``local_path``, the default file is the only file, and ``set`` writes it.
     With ``local_path``, ``set`` writes only the local file; the default file is read only.
     ``unknown_keys`` lists the local keys that the default file does not have; they are
-    not used. ``validators`` maps a dotted key to a function that raises ConfigError
-    for a value that is not permitted.
+    not used. A local file can add a field to a mapping value that has a validator, e.g. the
+    vault entry of a secret reference. ``validators`` maps a dotted key to a function that raises
+    ConfigError for a value that is not permitted.
 
     ``get`` gives a value of any type. ``get_str``, ``get_int``, ``get_float``, ``get_bool``
     and ``get_list``, ``get_str_map`` check the type of the value and raise ConfigError if it differs.
@@ -170,9 +171,12 @@ class ConfigFile:
                 try:
                     node, last = self._parent(key)
                 except KeyError:
-                    self.unknown_keys.append(key)
-                    continue
-                if isinstance(node[last], Mapping) and node[last]:
+                    found = self._value_field(key)
+                    if found is None:
+                        self.unknown_keys.append(key)
+                        continue
+                    node, last = found
+                if last in node and isinstance(node[last], Mapping) and node[last]:
                     self.unknown_keys.append(key)
                     continue
                 node[last] = copy.deepcopy(self._local_node(key))
@@ -180,6 +184,24 @@ class ConfigFile:
                 logging.getLogger("agent_broker.config").warning(
                     "%s: the key %s is not a configuration key; the value is not used", self.local_path, key)
         self.validate_all()
+
+    def _value_field(self, key: str) -> tuple[CommentedMap, str] | None:
+        """The parent mapping and the name of a new field of a mapping value, or None.
+
+        A mapping value is a mapping with a validator, e.g. a secret reference. A local file can add a
+        field to it, e.g. the vault entry. The validator then checks the merged mapping.
+        """
+        parent, _, last = key.rpartition(".")
+        if parent not in self.validators:
+            return None
+        try:
+            node, name = self._parent(parent)
+        except KeyError:
+            return None
+        value = node[name]
+        if not isinstance(value, CommentedMap):
+            return None
+        return value, last
 
     def _local_node(self, key: str) -> object:
         node: object = self.local
@@ -418,9 +440,13 @@ def log_level(value: JsonValue) -> None:
 
 
 def secret_ref(value: JsonValue) -> None:
-    """A secret reference: the vault entry and its key, and the environment variable."""
+    """A secret reference: the vault entry and its key, and the environment variable.
+
+    The committed configuration has no vault entry: the local file of the host adds it. Thus a reference needs
+    the key or the environment variable. ``secrets_proxy`` stops if a vault needs the entry and it is missing.
+    """
     fields = ("entry", "key", "env")
     if not (isinstance(value, dict) and value and set(value) <= set(fields)
             and all(isinstance(v, str) and v for v in value.values())
-            and ("env" in value or {"entry", "key"} <= set(value))):
+            and ("env" in value or "key" in value)):
         raise ConfigError("a secret reference must be {entry: <vault entry>, key: <secret name>, env: <variable>}")

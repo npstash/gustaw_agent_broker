@@ -19,14 +19,27 @@ def test_default_configuration_follows_the_design() -> None:
     assert conf.get_int("streams.heartbeat_timeout_s") == 45
     assert conf.get_int("streams.queue_limit") == 100
     assert conf.get_str("docker.socket") == "/var/run/docker.sock"
+    assert conf.get_str("docker.hostops") == ""
     assert conf.get_list("language.languages") == ["en", "pl"]
     assert conf.get_float("language.threshold") == 0.70
     assert conf.get_str("cert.file") == "server.crt"
     assert conf.get_str_map("credentials.secrets.tls_private_key") == {
-        "entry": "Agent Broker TLS 01", "key": "private_key", "env": "AGENT_BROKER_TLS_PRIVATE_KEY"}
+        "key": "private_key", "env": "AGENT_BROKER_TLS_PRIVATE_KEY"}
     assert conf.get_str("agents.claude.provider") == "agent_api"
     assert conf.get_str("agents.opencode.container") == "opencode"
     assert conf.get_str("credentials.vault") == ""
+    assert conf.get_str("credentials.vaultkeeper") == ""
+
+
+def test_committed_configuration_names_no_vault_entry() -> None:
+    """The project names no vault entry: the local file of the host gives it."""
+    lines = CONFIG_FILE.read_text(encoding="utf-8").splitlines()
+    assert all(line.lstrip().startswith("#") for line in lines if "entry" in line)
+    conf = cfg.ConfigFile(CONFIG_FILE)
+    refs = conf.section("credentials.secrets")
+    assert set(refs) == {"tls_private_key", "api_username", "api_password", "opencode_password"}
+    for ref in refs.values():
+        assert isinstance(ref, dict) and set(ref) == {"key", "env"}
 
 
 def test_certificate_values_have_one_source() -> None:

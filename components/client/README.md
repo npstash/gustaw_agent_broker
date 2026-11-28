@@ -17,12 +17,12 @@ A client project installs this component with pip. The package is `agent_broker_
 | `src/agent_broker_client/stream.py` | The SSE stream with the heartbeat timeout and the reconnect. |
 | `src/agent_broker_client/sse.py`, `tls.py` | SSE lines; the client TLS context. |
 | `src/agent_broker_client/certtool.py` | Make a new key pair for the broker. |
-| `src/agent_broker_client/config.py` | Read the YAML configuration. Keep the comments. |
-| `src/agent_broker_client/secrets_proxy.py` | Get secrets from the vault or from environment variables. A copy of the reference code of maya-agent-kit. Do not change it. |
+| `src/agent_broker_client/config.py` | Read the YAML configuration. Keep the comments. A local file can add a field to a value with a validator, e.g. the vault entry of a secret reference. |
+| `src/agent_broker_client/secrets_proxy.py` | Get secrets from vaultkeeper, from the vault or from environment variables. A copy of the reference code of maya-agent-kit. Do not change it. |
 | `src/agent_broker_client/vault.py` | Find the vault tool for certtool (`maya/tools/auth`). `FakeSecrets` for tests. |
 | `src/agent_broker_client/dependencies.py` | Find `maya-agent-kit` and the vault. A copy of the reference code. Do not change it. |
 | `src/agent_broker_client/jsontypes.py` | The types of a JSON value. |
-| `config/config.yaml` | The default configuration of certtool: the certificate file, CERT_NAMES, CERT_VALIDITY, the vault and the vault entry of the private key. |
+| `config/config.yaml` | The default configuration of certtool: the certificate file, CERT_NAMES, CERT_VALIDITY, the vault and the key of the private key. The project names no vault entry. |
 
 ## Use the client library
 
@@ -74,5 +74,5 @@ Change of session ([DESIGN.md](../../sdd/DESIGN.md), section 7.3):
 ## Run
 
 - Tests: `run.sh test`. The command runs the type check (mypy, strict) and the tests.
-- New key pair: `run.sh cert --config FILE`. FILE holds the values of the host, e.g. `cert.names` and `cert.file`. A relative `cert.file` starts at the folder of FILE. The tool writes the certificate to `cert.file` and the private key to the vault entry `Agent Broker TLS 01`. Keep FILE and the certificate in the deployment project of the host. Then deploy the certificate and restart the broker.
+- New key pair: `run.sh cert --config FILE`. FILE holds the values of the host: `cert.names`, `cert.file` and the vault entry of the key, `credentials.secrets.tls_private_key.entry`. `--entry` replaces the vault entry. A relative `cert.file` starts at the folder of FILE. The tool writes the certificate to `cert.file` and the private key to the vault entry. Keep FILE and the certificate in the deployment project of the host. Then deploy the certificate and restart the broker.
 - The venv is in `.local_assets/venv`.

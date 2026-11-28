@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from agent_broker_client import config as cfg
-from agent_broker_client import dependencies, vault
+from agent_broker_client import dependencies, secrets_proxy, vault
+from agent_broker_client.jsontypes import JsonValue
 
 SAMPLE = """\
 # top comment
@@ -42,8 +43,42 @@ def test_config_validator_at_load(tmp_path: Path) -> None:
 def test_secret_ref() -> None:
     cfg.secret_ref({"entry": "a", "key": "b"})
     cfg.secret_ref({"env": "A_VARIABLE"})
+    cfg.secret_ref({"key": "b"})                 # the local file of the host adds the vault entry
+    bad_refs: list[JsonValue] = [{"entry": "a"}, {"key": "b", "other": "c"}, {"key": ""}, {}]
+    for bad in bad_refs:
+        with pytest.raises(cfg.ConfigError):
+            cfg.secret_ref(bad)
+
+
+SECRETS_SAMPLE = """\
+listen:
+  port: 1
+credentials:
+  vault: ""
+  secrets:
+    token: {key: token, env: EXAMPLE_TOKEN}   # the project names no vault entry
+"""
+
+
+def test_local_file_adds_the_vault_entry_to_a_secret_reference(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(SECRETS_SAMPLE, encoding="utf-8")
+    local = tmp_path / "local.yaml"
+    local.write_text("credentials:\n  secrets:\n    token: {entry: \"Example System 01\"}\nlisten:\n  new: 2\n",
+                     encoding="utf-8")
+    conf = cfg.ConfigFile(path, {"credentials.secrets.token": cfg.secret_ref}, local_path=local)
+    assert conf.get_str_map("credentials.secrets.token") == {
+        "key": "token", "env": "EXAMPLE_TOKEN", "entry": "Example System 01"}
+    assert conf.unknown_keys == ["listen.new"]   # a mapping without a validator gets no new key
+
+
+def test_local_field_of_a_secret_reference_is_checked(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(SECRETS_SAMPLE, encoding="utf-8")
+    local = tmp_path / "local.yaml"
+    local.write_text("credentials:\n  secrets:\n    token: {other: x}\n", encoding="utf-8")
     with pytest.raises(cfg.ConfigError):
-        cfg.secret_ref({"entry": "a"})
+        cfg.ConfigFile(path, {"credentials.secrets.token": cfg.secret_ref}, local_path=local)
 
 
 def test_fake_secrets() -> None:
@@ -72,6 +107,12 @@ def test_dependencies_is_a_copy_of_the_reference_code() -> None:
     maya_agent_kit = dependencies.find("maya-agent-kit", Path(__file__).resolve().parents[1])
     reference = (maya_agent_kit / "rules" / "submodule-dependencies.py").read_text(encoding="utf-8")
     assert Path(dependencies.__file__).read_text(encoding="utf-8") == reference
+
+
+def test_secrets_proxy_is_a_copy_of_the_reference_code() -> None:
+    maya_agent_kit = dependencies.find("maya-agent-kit", Path(__file__).resolve().parents[1])
+    reference = (maya_agent_kit / "tools" / "auth" / "src" / "secrets_proxy.py").read_text(encoding="utf-8")
+    assert Path(secrets_proxy.__file__).read_text(encoding="utf-8") == reference
 
 
 def test_resolve_path(tmp_path: Path) -> None:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from agent_broker_client import RECONNECT_INTERVAL_S
 from agent_broker_client import config as cfg
-from agent_broker_client.jsontypes import JsonValue
+from agent_broker_client.jsontypes import JsonObject, JsonValue
 from agent_broker_client.vault import resolve_path
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -61,6 +61,11 @@ def _text(value: JsonValue) -> None:
         raise cfg.ConfigError("the value must be a text that is not empty")
 
 
+def _socket_path(value: JsonValue) -> None:
+    if not isinstance(value, str) or (value and not value.startswith("/")):
+        raise cfg.ConfigError("give an absolute socket path, or an empty text for none")
+
+
 def _agents(value: JsonValue) -> None:
     if not isinstance(value, dict) or not value:
         raise cfg.ConfigError("give one or more agents")
@@ -86,9 +91,11 @@ VALIDATORS: dict[str, cfg.Validator] = {
     "streams.heartbeat_timeout_s": cfg.number_range(0.001),
     "streams.queue_limit": cfg.number_range(1),
     "docker.socket": _text,
+    "docker.hostops": _socket_path,
     "language.threshold": cfg.number_range(0.0, 1.0),
     "cert.file": _text,
     "credentials.vault": lambda value: None,
+    "credentials.vaultkeeper": _socket_path,
     **{f"credentials.secrets.{name}": cfg.secret_ref for name in SECRET_NAMES},
 }
 
@@ -113,6 +120,7 @@ class Settings:
     heartbeat_interval: float = 15.0
     queue_limit: int = 100
     docker_socket: str = "/var/run/docker.sock"
+    hostops_socket: str = ""     # empty: the Docker socket; else the socket of hostops
     log_level: str = "INFO"
     cert_file: Path = field(default_factory=lambda: resolve_path(CONFIG_FOLDER, "server.crt"))
     reconnect_interval: float = RECONNECT_INTERVAL_S
@@ -122,6 +130,20 @@ class Settings:
     languages: tuple[str, ...] = ("en", "pl")
     language_threshold: float = 0.70
     reply_replay: float = 600.0
+
+
+def credentials(conf: cfg.ConfigFile, names: list[str]) -> JsonObject:
+    """The ``credentials`` section for ``secrets_proxy.open_secrets``, with only the secrets of ``names``.
+
+    An empty ``vaultkeeper`` means no vaultkeeper: the section then has no such key.
+    """
+    section = conf.section("credentials")
+    if section.get("vaultkeeper") == "":
+        del section["vaultkeeper"]
+    refs = section.get("secrets")
+    if isinstance(refs, dict):
+        section["secrets"] = {name: ref for name, ref in refs.items() if name in names}
+    return section
 
 
 def load(path: Path = CONFIG_FILE, local_path: Path | None = LOCAL_CONFIG) -> cfg.ConfigFile:
@@ -145,6 +167,7 @@ def from_config(conf: cfg.ConfigFile) -> Settings:
         heartbeat_interval=conf.get_float("streams.heartbeat_interval_s"),
         queue_limit=conf.get_int("streams.queue_limit"),
         docker_socket=conf.get_str("docker.socket"),
+        hostops_socket=conf.get_str("docker.hostops"),
         log_level=conf.get_str("log.level").upper(),
         cert_file=resolve_path(CONFIG_FOLDER, conf.get_str("cert.file")),
         languages=tuple(str(v) for v in conf.get_list("language.languages")),

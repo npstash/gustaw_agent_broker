@@ -21,7 +21,7 @@ from agent_broker_client.messages import MessageError
 from agent_broker_client.models import AgentState, ContainerState
 
 from . import logs
-from .docker import DockerEngine
+from .docker import ContainerEngine
 from .errors import (AgentError, AgentUnavailableError, BadRequestError, ContainerMissingError,
                      DockerUnavailableError, NotFoundError)
 from .proxy import EventProxy
@@ -77,7 +77,7 @@ async def _body(request: web.Request, name: str) -> JsonObject:
 class Api:
     """The routes of the broker API. ``closing`` is true while the broker stops."""
 
-    def __init__(self, router: Router, docker: DockerEngine, proxy: EventProxy, username: str, password: str):
+    def __init__(self, router: Router, docker: ContainerEngine, proxy: EventProxy, username: str, password: str):
         self.router = router
         self.docker = docker
         self.proxy = proxy
