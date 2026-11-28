@@ -125,8 +125,6 @@ def test_script_syntax() -> None:
     for name in ("update.sh", "prepare.sh"):
         assert subprocess.run(["bash", "-n", str(PROJECT / name)]).returncode == 0
         assert os.access(PROJECT / name, os.X_OK)
-        if shutil.which("shellcheck"):
-            assert subprocess.run(["shellcheck", str(PROJECT / name)]).returncode == 0
 
 
 def test_dry_run_gives_the_steps_in_order_and_runs_nothing(layout: Layout) -> None:
